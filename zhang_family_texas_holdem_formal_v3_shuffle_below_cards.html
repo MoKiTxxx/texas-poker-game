@@ -949,6 +949,7 @@
 
 <script>
 const FORMAL_RELEASE = true;
+const RANGE_MC_STRATEGY_ALPHA = 0.25;
 let players = [];
 let deck = [];
 let board = [];
@@ -1953,7 +1954,13 @@ function renderDebugPanel() {
     const equitySourceText = info.equitySource === "range-aware-monte-carlo"
         ? "Range MC" + (info.monteCarloTrials ? " (" + info.monteCarloTrials + " trials)" : "")
         : "Heuristic fallback";
-    html += "<div><b>街道：</b>" + info.street + "｜<b>Equity：</b>" + formatPercent(info.equity) + "｜<b>來源：</b>" + equitySourceText + "｜<b>需跟注：</b>" + money(info.toCall) + "</div>";
+    const rawEquityText = info.rawMonteCarloEquity !== null && info.rawMonteCarloEquity !== undefined
+        ? "｜<b>Raw MC：</b>" + formatPercent(info.rawMonteCarloEquity)
+        : "";
+    const alphaText = info.strategyEquityAlpha > 0
+        ? "｜<b>α：</b>" + info.strategyEquityAlpha
+        : "";
+    html += "<div><b>街道：</b>" + info.street + "｜<b>Strategy Equity：</b>" + formatPercent(info.equity) + rawEquityText + alphaText + "｜<b>來源：</b>" + equitySourceText + "｜<b>需跟注：</b>" + money(info.toCall) + "</div>";
     html += "<div><b>動作：</b>" + info.planType + "｜<b>目的：</b>" + (info.purpose || "-") + "｜<b>尺度：</b>" + (info.tier || "-") + "</div>";
     html += "<div><b>SPR：</b>" + (info.spr ?? "-") + "｜<b>對手數：</b>" + (info.opponents ?? "-") + "｜<b>下注額：</b>" + (info.amount !== null && info.amount !== undefined ? money(info.amount) : "-") + "</div>";
 
@@ -5546,6 +5553,12 @@ function performGTODecision(index) {
             // Worker 回來時，牌局可能已被重開、watchdog 接管或 action token 已失效。
             if (!isPendingAiAction(actingIndex, actionToken)) return;
 
+            const rawMonteCarloEquity = equityResult.equity;
+            const heuristicEquity = equityResult.heuristicEquity;
+            const strategyEquity = equityResult.source === "range-aware-monte-carlo"
+                ? heuristicEquity + RANGE_MC_STRATEGY_ALPHA * (rawMonteCarloEquity - heuristicEquity)
+                : rawMonteCarloEquity;
+
             pendingAiDebugInfo[actingIndex] = {
                 ...(pendingAiDebugInfo[actingIndex] || {}),
                 equitySource: equityResult.source,
@@ -5553,10 +5566,13 @@ function performGTODecision(index) {
                 monteCarloOpponents: equityResult.opponentCount,
                 monteCarloOpponentNames: equityResult.opponentNames,
                 monteCarloTimeLimitMs: equityResult.timeLimitMs,
-                heuristicEquity: equityResult.heuristicEquity
+                rawMonteCarloEquity,
+                strategyEquity,
+                strategyEquityAlpha: equityResult.source === "range-aware-monte-carlo" ? RANGE_MC_STRATEGY_ALPHA : 0,
+                heuristicEquity
             };
 
-            executeGTOAction(actingIndex, equityResult.equity, toCall);
+            executeGTOAction(actingIndex, strategyEquity, toCall);
             finishAiTurn(actingIndex);
         } catch (err) {
             console.error("range-aware postflop AI decision failed", err);
@@ -8383,6 +8399,9 @@ function updateAiDebugInfo(index, equity, toCall, plan, texture, hero) {
         monteCarloOpponents: pending.monteCarloOpponents ?? null,
         monteCarloOpponentNames: pending.monteCarloOpponentNames || [],
         monteCarloTimeLimitMs: pending.monteCarloTimeLimitMs ?? null,
+        rawMonteCarloEquity: pending.rawMonteCarloEquity ?? null,
+        strategyEquity: pending.strategyEquity ?? equity,
+        strategyEquityAlpha: pending.strategyEquityAlpha ?? 0,
         heuristicEquity: pending.heuristicEquity ?? null,
         toCall,
         planType: plan.type,

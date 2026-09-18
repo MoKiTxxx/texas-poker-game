@@ -12,13 +12,12 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 12
+      max-parallel: 10
       matrix:
-        alpha: [0.25, 0.40, 0.55]
-        seed: [101, 202, 303, 404]
+        seed: [1111, 2222, 3333, 4444, 5555, 6666, 7777, 8888, 9999, 10101]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +25,8 @@ jobs:
           node-version: "22"
       - name: Run head-to-head benchmark
         env:
-          BENCH_ALPHA: ${{ matrix.alpha }}
+          BENCH_ALPHA: "0.25"
           BENCH_SEED: ${{ matrix.seed }}
-          BENCH_HANDS: "200"
-          BENCH_TRIALS: "40"
+          BENCH_HANDS: "500"
+          BENCH_TRIALS: "60"
         run: node benchmark-headsup.js

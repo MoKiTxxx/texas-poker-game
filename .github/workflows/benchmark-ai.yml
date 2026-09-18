@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       max-parallel: 10
       matrix:
-        seed: [1111, 2222, 3333, 4444, 5555, 6666, 7777, 8888, 9999, 10101]
+        seed: [12121, 13131, 14141, 15151, 16161, 17171, 18181, 19191, 20202, 21212]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

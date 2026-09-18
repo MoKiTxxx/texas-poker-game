@@ -8,6 +8,14 @@ on:
       - benchmark-headsup.js
       - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
       - .github/workflows/benchmark-ai.yml
+  pull_request:
+    branches:
+      - main
+      - feature/range-aware-monte-carlo-equity
+    paths:
+      - benchmark-headsup.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/benchmark-ai.yml
 
 jobs:
   benchmark:

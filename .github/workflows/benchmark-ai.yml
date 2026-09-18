@@ -1,0 +1,30 @@
+name: Poker AI A/B Benchmark
+
+on:
+  push:
+    branches:
+      - benchmark/heuristic-vs-range-mc
+    paths:
+      - benchmark-headsup.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/benchmark-ai.yml
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [101, 202, 303, 404]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run head-to-head benchmark
+        env:
+          BENCH_SEED: ${{ matrix.seed }}
+          BENCH_HANDS: "1000"
+          BENCH_TRIALS: "60"
+        run: node benchmark-headsup.js

@@ -431,3 +431,5 @@ return (async () => {
     console.error(err && err.stack ? err.stack : err);
     process.exit(1);
 });
+
+// Trigger benchmark workflow after PR creation.

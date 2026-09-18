@@ -949,6 +949,7 @@
 
 <script>
 const FORMAL_RELEASE = true;
+const RANGE_MC_STRATEGY_ALPHA = 0.25;
 let players = [];
 let deck = [];
 let board = [];
@@ -1950,7 +1951,16 @@ function renderDebugPanel() {
     let html = "";
 
     html += "<div><b>AI：</b>" + info.aiName + "</div>";
-    html += "<div><b>街道：</b>" + info.street + "｜<b>Equity：</b>" + formatPercent(info.equity) + "｜<b>需跟注：</b>" + money(info.toCall) + "</div>";
+    const equitySourceText = info.equitySource === "range-aware-monte-carlo"
+        ? "Range MC" + (info.monteCarloTrials ? " (" + info.monteCarloTrials + " trials)" : "")
+        : "Heuristic fallback";
+    const rawEquityText = info.rawMonteCarloEquity !== null && info.rawMonteCarloEquity !== undefined
+        ? "｜<b>Raw MC：</b>" + formatPercent(info.rawMonteCarloEquity)
+        : "";
+    const alphaText = info.strategyEquityAlpha > 0
+        ? "｜<b>α：</b>" + info.strategyEquityAlpha
+        : "";
+    html += "<div><b>街道：</b>" + info.street + "｜<b>Strategy Equity：</b>" + formatPercent(info.equity) + rawEquityText + alphaText + "｜<b>來源：</b>" + equitySourceText + "｜<b>需跟注：</b>" + money(info.toCall) + "</div>";
     html += "<div><b>動作：</b>" + info.planType + "｜<b>目的：</b>" + (info.purpose || "-") + "｜<b>尺度：</b>" + (info.tier || "-") + "</div>";
     html += "<div><b>SPR：</b>" + (info.spr ?? "-") + "｜<b>對手數：</b>" + (info.opponents ?? "-") + "｜<b>下注額：</b>" + (info.amount !== null && info.amount !== undefined ? money(info.amount) : "-") + "</div>";
 
@@ -5313,6 +5323,164 @@ function executeHumanTestAction(index) {
     executePreflopAction(index);
 }
 
+function getMonteCarloOpponentData(index) {
+    const opponents = players
+        .map((playerObj, i) => ({ player: playerObj, index: i }))
+        .filter(x =>
+            x.index !== index &&
+            x.player &&
+            !x.player.folded &&
+            !x.player.bankrupt &&
+            x.player.hole &&
+            x.player.hole.length === 2
+        );
+
+    const ranges = opponents.map(x => {
+        try {
+            return estimateOpponentRange(x.index);
+        } catch (err) {
+            console.warn("estimateOpponentRange failed; Monte Carlo will use fallback random cards", x.player.name, err);
+            return {};
+        }
+    });
+
+    return {
+        indices: opponents.map(x => x.index),
+        names: opponents.map(x => x.player.name),
+        ranges
+    };
+}
+
+function estimateRangeAwarePostflopEquity(index, options = {}) {
+    const p = players[index];
+    const heuristicEquity = estimateHeuristicPostflopEquity(index);
+    const timeLimitMs = Math.max(50, Number(options.timeLimitMs) || (autoPlayMode ? 55 : 180));
+    const timeoutMs = Math.max(timeLimitMs + 300, Number(options.timeoutMs) || (autoPlayMode ? 450 : 800));
+
+    if (!p || !p.hole || p.hole.length !== 2 || board.length < 3) {
+        return Promise.resolve({
+            equity: heuristicEquity,
+            trials: 0,
+            source: "heuristic-invalid-state",
+            opponentCount: 0,
+            opponentNames: [],
+            timeLimitMs,
+            heuristicEquity
+        });
+    }
+
+    const opponentData = getMonteCarloOpponentData(index);
+
+    if (opponentData.indices.length === 0) {
+        return Promise.resolve({
+            equity: heuristicEquity,
+            trials: 0,
+            source: "heuristic-no-opponent",
+            opponentCount: 0,
+            opponentNames: [],
+            timeLimitMs,
+            heuristicEquity
+        });
+    }
+
+    let worker;
+
+    try {
+        worker = createGtoWorker();
+    } catch (err) {
+        console.warn("Monte Carlo worker creation failed; using heuristic equity", err);
+        return Promise.resolve({
+            equity: heuristicEquity,
+            trials: 0,
+            source: "heuristic-worker-create-fallback",
+            opponentCount: opponentData.indices.length,
+            opponentNames: opponentData.names,
+            timeLimitMs,
+            heuristicEquity
+        });
+    }
+
+    return new Promise(resolve => {
+        let settled = false;
+
+        function finish(result) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            try {
+                worker.terminate();
+            } catch (err) {
+                console.warn("Monte Carlo worker terminate failed", err);
+            }
+            resolve(result);
+        }
+
+        const timeoutId = setTimeout(() => {
+            finish({
+                equity: heuristicEquity,
+                trials: 0,
+                source: "heuristic-monte-carlo-timeout",
+                opponentCount: opponentData.indices.length,
+                opponentNames: opponentData.names,
+                timeLimitMs,
+                heuristicEquity
+            });
+        }, timeoutMs);
+
+        worker.onmessage = event => {
+            const result = event && event.data ? event.data : {};
+            const equity = Number(result.equity);
+            const trials = Number(result.trials) || 0;
+
+            if (!Number.isFinite(equity) || trials <= 0) {
+                finish({
+                    equity: heuristicEquity,
+                    trials,
+                    source: "heuristic-invalid-monte-carlo-result",
+                    opponentCount: opponentData.indices.length,
+                    opponentNames: opponentData.names,
+                    timeLimitMs,
+                    heuristicEquity
+                });
+                return;
+            }
+
+            finish({
+                equity: Math.max(0, Math.min(1, equity)),
+                trials,
+                source: "range-aware-monte-carlo",
+                opponentCount: opponentData.indices.length,
+                opponentNames: opponentData.names,
+                timeLimitMs,
+                heuristicEquity
+            });
+        };
+
+        worker.onerror = err => {
+            console.warn("Monte Carlo worker failed; using heuristic equity", err);
+            finish({
+                equity: heuristicEquity,
+                trials: 0,
+                source: "heuristic-monte-carlo-error",
+                opponentCount: opponentData.indices.length,
+                opponentNames: opponentData.names,
+                timeLimitMs,
+                heuristicEquity
+            });
+        };
+
+        worker.postMessage({
+            holeCards: p.hole.map(card => ({ rank: card.rank, suit: card.suit })),
+            currentBoard: board.map(card => ({ rank: card.rank, suit: card.suit })),
+            opponentRanges: opponentData.ranges,
+            opponentsCount: opponentData.indices.length,
+            timeLimitMs,
+            deckContext: getUnknownDeckForGto(p)
+        });
+    });
+}
+
+
 function performGTODecision(index) {
     const p = players[index];
 
@@ -5366,7 +5534,7 @@ function performGTODecision(index) {
 
     const toCall = Math.max(0, currentBet - p.currentBet);
 
-    setTimeout(() => {
+    setTimeout(async () => {
         if (!isPendingAiAction(actingIndex, actionToken)) return;
 
         try {
@@ -5377,27 +5545,55 @@ function performGTODecision(index) {
                 opponentRanges: getSafeOpponentRangeDebug(actingIndex)
             };
 
-            executeHeuristicPostflopAction(actingIndex, toCall);
+            const equityResult = await estimateRangeAwarePostflopEquity(actingIndex, {
+                timeLimitMs: autoPlayMode ? 55 : 180,
+                timeoutMs: autoPlayMode ? 450 : 800
+            });
+
+            // Worker 回來時，牌局可能已被重開、watchdog 接管或 action token 已失效。
+            if (!isPendingAiAction(actingIndex, actionToken)) return;
+
+            const rawMonteCarloEquity = equityResult.equity;
+            const heuristicEquity = equityResult.heuristicEquity;
+            const strategyEquity = equityResult.source === "range-aware-monte-carlo"
+                ? heuristicEquity + RANGE_MC_STRATEGY_ALPHA * (rawMonteCarloEquity - heuristicEquity)
+                : rawMonteCarloEquity;
+
+            pendingAiDebugInfo[actingIndex] = {
+                ...(pendingAiDebugInfo[actingIndex] || {}),
+                equitySource: equityResult.source,
+                monteCarloTrials: equityResult.trials,
+                monteCarloOpponents: equityResult.opponentCount,
+                monteCarloOpponentNames: equityResult.opponentNames,
+                monteCarloTimeLimitMs: equityResult.timeLimitMs,
+                rawMonteCarloEquity,
+                strategyEquity,
+                strategyEquityAlpha: equityResult.source === "range-aware-monte-carlo" ? RANGE_MC_STRATEGY_ALPHA : 0,
+                heuristicEquity
+            };
+
+            executeGTOAction(actingIndex, strategyEquity, toCall);
             finishAiTurn(actingIndex);
         } catch (err) {
-            console.error("heuristic postflop AI decision failed", err);
-            recordAiRuntimeError(actingIndex, "postflop-heuristic", err);
+            console.error("range-aware postflop AI decision failed", err);
+            recordAiRuntimeError(actingIndex, "postflop-range-aware", err);
 
             try {
                 const equity = estimateHeuristicPostflopEquity(actingIndex);
-                const textureDebug = analyzeBoardTexture(board);
-                const heroDebug = analyzeHeroBoardInteraction(players[actingIndex].hole, board);
-                const fallbackPlan = { type: toCall === 0 ? "check" : (equity >= Math.max(0.28, toCall / Math.max(1, pot + toCall)) ? "call" : "fold"), amount: null };
-                updateAiDebugInfo(actingIndex, equity, toCall, fallbackPlan, textureDebug, heroDebug);
 
-                if (fallbackPlan.type === "check" || fallbackPlan.type === "call") callPlayer(actingIndex);
-                else foldPlayer(actingIndex);
+                pendingAiDebugInfo[actingIndex] = {
+                    ...(pendingAiDebugInfo[actingIndex] || {}),
+                    equitySource: "heuristic-exception-fallback",
+                    monteCarloTrials: 0,
+                    heuristicEquity: equity
+                };
 
+                executeGTOAction(actingIndex, equity, toCall);
                 finishAiTurn(actingIndex);
             } catch (innerErr) {
                 console.error("secondary postflop fallback failed", innerErr);
                 recordAiRuntimeError(actingIndex, "postflop-secondary-fallback", innerErr);
-                safeFallbackAiAction(actingIndex, "postflop-heuristic-exception");
+                safeFallbackAiAction(actingIndex, "postflop-range-aware-exception");
             }
         }
     }, humanDelay);
@@ -8198,6 +8394,15 @@ function updateAiDebugInfo(index, equity, toCall, plan, texture, hero) {
         aiName: players[index].name,
         street,
         equity,
+        equitySource: pending.equitySource || "heuristic",
+        monteCarloTrials: pending.monteCarloTrials ?? null,
+        monteCarloOpponents: pending.monteCarloOpponents ?? null,
+        monteCarloOpponentNames: pending.monteCarloOpponentNames || [],
+        monteCarloTimeLimitMs: pending.monteCarloTimeLimitMs ?? null,
+        rawMonteCarloEquity: pending.rawMonteCarloEquity ?? null,
+        strategyEquity: pending.strategyEquity ?? equity,
+        strategyEquityAlpha: pending.strategyEquityAlpha ?? 0,
+        heuristicEquity: pending.heuristicEquity ?? null,
         toCall,
         planType: plan.type,
         purpose: plan.v32Purpose || sizing.purpose || "-",
@@ -8395,8 +8600,7 @@ function createGtoWorker() {
 
             const start = Date.now();
             let trials = 0;
-            let wins = 0;
-            let ties = 0;
+            let equityShareTotal = 0;
 
             while (Date.now() - start < timeLimitMs || trials < 100) {
                 const deck = deckContext.slice();
@@ -8433,27 +8637,32 @@ function createGtoWorker() {
                 }
 
                 const heroHand = bestOfSeven(holeCards.concat(board));
+                const opponentResults = opponentHands.map(oppHole => bestOfSeven(oppHole.concat(board)));
                 let bestOpponent = null;
 
-                for (const oppHole of opponentHands) {
-                    const oppHand = bestOfSeven(oppHole.concat(board));
+                for (const oppHand of opponentResults) {
                     if (bestOpponent === null || compareHands(oppHand, bestOpponent) > 0) {
                         bestOpponent = oppHand;
                     }
                 }
 
                 if (bestOpponent === null) {
-                    wins++;
+                    equityShareTotal += 1;
                 } else {
                     const cmp = compareHands(heroHand, bestOpponent);
-                    if (cmp > 0) wins++;
-                    else if (cmp === 0) ties++;
+
+                    if (cmp > 0) {
+                        equityShareTotal += 1;
+                    } else if (cmp === 0) {
+                        const tiedOpponents = opponentResults.filter(oppHand => compareHands(oppHand, heroHand) === 0).length;
+                        equityShareTotal += 1 / Math.max(1, tiedOpponents + 1);
+                    }
                 }
 
                 trials++;
             }
 
-            const equity = trials > 0 ? (wins + ties * 0.5) / trials : 0;
+            const equity = trials > 0 ? equityShareTotal / trials : 0;
             self.postMessage({ equity, trials });
         };
 

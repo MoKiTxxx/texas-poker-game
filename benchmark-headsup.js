@@ -4,6 +4,7 @@ const HTML_FILE = "zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html"
 const SEED = Number(process.env.BENCH_SEED || 101);
 const HANDS = Number(process.env.BENCH_HANDS || 1000);
 const MC_TRIALS = Number(process.env.BENCH_TRIALS || 60);
+const CALIBRATION_ALPHA = Number(process.env.BENCH_ALPHA || 1);
 const START_CHIPS = 2000;
 const BIG_BLIND = 20;
 
@@ -61,6 +62,7 @@ return (async () => {
     const TRIALS = ${MC_TRIALS};
     const HANDS_TO_RUN = ${HANDS};
     const INITIAL_SEED = ${SEED};
+    const ALPHA = ${CALIBRATION_ALPHA};
 
     let seed = INITIAL_SEED >>> 0;
     Math.random = function() {
@@ -292,7 +294,9 @@ return (async () => {
         let equity;
 
         if (p.benchmarkPolicy === "new") {
-            equity = monteCarloEquity(index, TRIALS);
+            const heuristicEquity = estimateHeuristicPostflopEquity(index);
+            const monteCarlo = monteCarloEquity(index, TRIALS);
+            equity = heuristicEquity + ALPHA * (monteCarlo - heuristicEquity);
             monteCarloDecisionCount++;
         } else {
             equity = estimateHeuristicPostflopEquity(index);
@@ -400,6 +404,7 @@ return (async () => {
         seed: INITIAL_SEED,
         hands: n,
         mcTrialsPerNewPostflopDecision: TRIALS,
+        calibrationAlpha: ALPHA,
         monteCarloDecisionCount,
         newNetBB: Number(newProfitBB.reduce((a, b) => a + b, 0).toFixed(4)),
         oldNetBB: Number((-newProfitBB.reduce((a, b) => a + b, 0)).toFixed(4)),
@@ -418,6 +423,10 @@ return (async () => {
         oldStats: players[0].stats,
         newStats: players[1].stats,
         actionCounts,
+        postflopAggressionRatio: Number((
+            (actionCounts.new.bet + actionCounts.new.raise) /
+            Math.max(1, actionCounts.old.bet + actionCounts.old.raise)
+        ).toFixed(6)),
         elapsedMs
     };
 })()

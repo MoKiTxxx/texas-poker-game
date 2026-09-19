@@ -1,0 +1,34 @@
+name: HU flop depth CFR validation
+
+on:
+  push:
+    branches:
+      - feature/flop-depth-cfr
+    paths:
+      - cfr/holdem-postflop.js
+      - cfr/flop-depth-cfr.js
+      - cfr/flop-depth-cfr.test.js
+      - cfr/HU_FLOP_DEPTH.md
+      - .github/workflows/flop-depth-cfr.yml
+  pull_request:
+    branches:
+      - feature/hu-midstack-cfr
+    paths:
+      - cfr/**
+      - .github/workflows/flop-depth-cfr.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Keep preflop CFR regressions green
+        run: |
+          node cfr/hu-pushfold-cfr.test.js
+          node cfr/hu-midstack-cfr.test.js
+      - name: Validate flop depth-limited CFR
+        run: node cfr/flop-depth-cfr.test.js

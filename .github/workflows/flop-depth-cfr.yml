@@ -13,6 +13,8 @@ on:
       - cfr/flop-depth-cfr.js
       - cfr/flop-depth-cfr.test.js
       - cfr/HU_FLOP_DEPTH.md
+      - test-flop-cfr-live-adapter.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
       - .github/workflows/flop-depth-cfr.yml
   pull_request:
     branches:
@@ -35,3 +37,5 @@ jobs:
           node -e "require('./cfr/hu-pushfold-cfr'); require('./cfr/hu-midstack-cfr');"
       - name: Validate flop depth-limited CFR
         run: node cfr/flop-depth-cfr.test.js
+      - name: Validate live flop worker adapter
+        run: node test-flop-cfr-live-adapter.js

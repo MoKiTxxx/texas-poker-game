@@ -2040,6 +2040,15 @@ function renderDebugPanel() {
         html += "<div class='debugMono'>" + (info.postflopPlanRead.reasons || []).join(" / ") + "</div>";
     }
 
+    if (info.defensiveMcOverlay) {
+        const dm = info.defensiveMcOverlay;
+        html += "<div class='debugBlock'><b>v38 Defensive MC：</b>" + dm.originalType + " → " + dm.finalType + "</div>";
+        html += "<div class='debugMono'>rawMC=" + formatPercent(dm.rawMonteCarloEquity)
+            + " / potOdds=" + formatPercent(dm.potOdds)
+            + " / margin=" + formatPercent(dm.safetyMargin)
+            + " / reason=" + dm.reason + "</div>";
+    }
+
     if (info.v37PostflopOverride) {
         const ov = info.v37PostflopOverride;
         html += "<div class='debugBlock'><b>v37 Override：</b>" + (ov.finalAllowed ? "applied" : "none") + "</div>";
@@ -5572,7 +5581,7 @@ function performGTODecision(index) {
                 heuristicEquity
             };
 
-            executeGTOAction(actingIndex, strategyEquity, toCall);
+            executeRangeAwareGTOAction(actingIndex, strategyEquity, rawMonteCarloEquity, toCall);
             finishAiTurn(actingIndex);
         } catch (err) {
             console.error("range-aware postflop AI decision failed", err);
@@ -8344,6 +8353,119 @@ function chooseRaiseTo(index, toCall, texture, hero, purpose = "value", equity =
     return amount;
 }
 
+function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) {
+    if (!plan || toCall <= 0 || !Number.isFinite(rawMonteCarloEquity)) {
+        return plan;
+    }
+
+    const p = players[index];
+    const currentPot = Math.max(1, pot);
+    const potOdds = toCall / Math.max(1, currentPot + toCall);
+    const opponentCount = Math.max(1, getShowdownOpponentCount(index));
+    const isRiver = board.length >= 5;
+    const multiway = opponentCount >= 2;
+    const severePressure = toCall > currentPot * 0.85;
+    const purpose = plan.v32Purpose || plan.purpose || (lastSizingDebug ? lastSizingDebug.purpose : null) || "-";
+
+    // Monte Carlo is noisy. Require a small edge before it is allowed to
+    // rescue a fold, and give river/multiway/large-bet spots a wider guard.
+    let safetyMargin = 0.025;
+    if (isRiver) safetyMargin += 0.015;
+    if (multiway) safetyMargin += 0.020;
+    if (severePressure) safetyMargin += 0.015;
+
+    const callFloor = potOdds + safetyMargin;
+    const foldFloor = Math.max(0, potOdds - safetyMargin);
+    const originalType = plan.type;
+    let finalType = originalType;
+    let reason = "no-change";
+
+    // Raw MC can improve defensive accuracy, but it is not allowed to invent
+    // new aggression. A fold may become a call; a loose call may become a fold.
+    if (originalType === "fold" && rawMonteCarloEquity >= callFloor) {
+        finalType = "call";
+        reason = "raw-mc-rescues-fold";
+    } else if (originalType === "call" && rawMonteCarloEquity < foldFloor) {
+        finalType = "fold";
+        reason = "raw-mc-rejects-negative-call";
+    } else if (originalType === "raise") {
+        const isBluffPurpose =
+            purpose === "bluff" ||
+            purpose === "semiBluff" ||
+            purpose === "blockerBluff" ||
+            purpose === "rangeProbe";
+
+        // Do not use showdown equity to suppress intentional bluffs.
+        // For value/protection raises, however, a clearly negative defensive
+        // equity estimate downgrades the action instead of stacking off.
+        if (!isBluffPurpose && rawMonteCarloEquity < foldFloor) {
+            finalType = "fold";
+            reason = "raw-mc-blocks-negative-value-raise";
+        } else if (!isBluffPurpose && rawMonteCarloEquity < callFloor) {
+            finalType = "call";
+            reason = "raw-mc-downgrades-thin-raise";
+        }
+    }
+
+    return {
+        ...plan,
+        type: finalType,
+        defensiveMcOverlay: {
+            version: "v38-defensive-range-mc",
+            originalType,
+            finalType,
+            purpose,
+            rawMonteCarloEquity,
+            potOdds,
+            safetyMargin,
+            callFloor,
+            foldFloor,
+            opponentCount,
+            multiway,
+            severePressure,
+            reason,
+            aggressionCanOnlyDecrease: true
+        }
+    };
+}
+
+function executeRangeAwareGTOAction(index, strategyEquity, rawMonteCarloEquity, toCall) {
+    lastSizingDebug = null;
+    const textureDebug = analyzeBoardTexture(board);
+    const heroDebug = analyzeHeroBoardInteraction(players[index].hole, board);
+    let plan = choosePostflopPlan(index, strategyEquity, toCall);
+    plan = applyV32PostflopUpgrade(index, plan, strategyEquity, toCall, textureDebug, heroDebug);
+    plan = applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall);
+
+    updateAiDebugInfo(index, strategyEquity, toCall, plan, textureDebug, heroDebug);
+
+    if (plan.type === "check" || plan.type === "call") {
+        callPlayer(index);
+        return;
+    }
+
+    if (plan.type === "bet") {
+        if (plan.amount === null || plan.amount === undefined || !Number.isFinite(plan.amount) || plan.amount <= 0) {
+            callPlayer(index);
+        } else {
+            raisePlayer(index, currentBet + plan.amount);
+        }
+        return;
+    }
+
+    if (plan.type === "raise") {
+        if (plan.amount === null || plan.amount === undefined || !Number.isFinite(plan.amount)) {
+            callPlayer(index);
+        } else {
+            raisePlayer(index, plan.amount);
+        }
+        return;
+    }
+
+    foldPlayer(index);
+}
+
+
 function executeGTOAction(index, equity, toCall) {
     lastSizingDebug = null;
     const textureDebug = analyzeBoardTexture(board);
@@ -8424,6 +8546,7 @@ function updateAiDebugInfo(index, equity, toCall, plan, texture, hero) {
         v37PostflopPreOverride: plan.v37PostflopPreOverride || null,
         v37PostflopFinalOverride: plan.v37PostflopFinalOverride || null,
         v37FinalSafetyApplied: !!plan.v37FinalSafetyApplied,
+        defensiveMcOverlay: plan.defensiveMcOverlay || null,
         v37OpponentBreakdown: plan.v37OpponentBreakdown || getPostflopOpponentBreakdown(index),
         v36AActionReason: plan.v36AActionReason || "none",
         v36DActionReason: plan.v36DActionReason || "none",

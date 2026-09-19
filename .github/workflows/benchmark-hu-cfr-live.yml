@@ -1,4 +1,4 @@
-name: HU CFR live A/B sweep
+name: HU CFR live A/B holdout
 
 on:
   pull_request:
@@ -10,24 +10,33 @@ on:
       - .github/workflows/benchmark-hu-cfr-live.yml
 
 jobs:
-  sweep:
+  holdout:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 5
       matrix:
-        stack: [5, 8, 10, 12, 15]
-        mix: [0.25, 0.5, 0.75, 1.0]
+        include:
+          - stack: 5
+            seed: 510051
+          - stack: 8
+            seed: 810081
+          - stack: 10
+            seed: 1010101
+          - stack: 12
+            seed: 1212121
+          - stack: 15
+            seed: 1515151
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run duplicate HU short-stack A/B
+      - name: Run duplicate HU CFR holdout
         env:
           BENCH_STACK_BB: ${{ matrix.stack }}
-          BENCH_MIX: ${{ matrix.mix }}
-          BENCH_PAIRS: "100"
-          BENCH_SEED: "930001"
+          BENCH_MIX: "1.0"
+          BENCH_PAIRS: "500"
+          BENCH_SEED: ${{ matrix.seed }}
         run: node benchmark-hu-cfr-live.js

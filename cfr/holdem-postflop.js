@@ -360,26 +360,42 @@ function normalizeRange(range, flop) {
 class WeightedRangeSampler {
   constructor(range) {
     this.range = range;
-    this.totalWeight = range.reduce(
-      (sum, x) => sum + x.weight,
-      0
-    );
+    this.cumulative = new Float64Array(range.length);
+    let total = 0;
+
+    for (let i = 0; i < range.length; i++) {
+      total += range[i].weight;
+      this.cumulative[i] = total;
+    }
+
+    this.totalWeight = total;
+  }
+
+  _drawIndex(rng) {
+    const target = rng.next() * this.totalWeight;
+    let low = 0;
+    let high = this.cumulative.length - 1;
+
+    while (low < high) {
+      const mid = (low + high) >> 1;
+
+      if (target <= this.cumulative[mid]) {
+        high = mid;
+      } else {
+        low = mid + 1;
+      }
+    }
+
+    return low;
   }
 
   sample(rng, extraBlocked = null) {
     for (let attempt = 0; attempt < 64; attempt++) {
-      let target = rng.next() * this.totalWeight;
-      let chosen = this.range[this.range.length - 1];
+      const chosen = this.range[this._drawIndex(rng)];
 
-      for (const entry of this.range) {
-        target -= entry.weight;
-        if (target <= 0) {
-          chosen = entry;
-          break;
-        }
+      if (!extraBlocked) {
+        return chosen.cards.slice();
       }
-
-      if (!extraBlocked) return chosen.cards.slice();
 
       const [a, b] = chosen.cards;
       if (
@@ -390,30 +406,42 @@ class WeightedRangeSampler {
       }
     }
 
-    const legal = this.range.filter(entry => {
+    const legal = [];
+    let total = 0;
+
+    for (const entry of this.range) {
       const [a, b] = entry.cards;
-      return (
-        !extraBlocked ||
+
+      if (
+        extraBlocked &&
         (
-          !extraBlocked.has(a) &&
-          !extraBlocked.has(b)
+          extraBlocked.has(a) ||
+          extraBlocked.has(b)
         )
-      );
-    });
+      ) {
+        continue;
+      }
+
+      total += entry.weight;
+      legal.push({
+        entry,
+        cumulative: total
+      });
+    }
 
     if (legal.length === 0) {
       throw new Error("no compatible private combo in range");
     }
 
-    let total = legal.reduce((s, x) => s + x.weight, 0);
-    let target = rng.next() * total;
+    const target = rng.next() * total;
 
-    for (const entry of legal) {
-      target -= entry.weight;
-      if (target <= 0) return entry.cards.slice();
+    for (const item of legal) {
+      if (target <= item.cumulative) {
+        return item.entry.cards.slice();
+      }
     }
 
-    return legal[legal.length - 1].cards.slice();
+    return legal[legal.length - 1].entry.cards.slice();
   }
 }
 

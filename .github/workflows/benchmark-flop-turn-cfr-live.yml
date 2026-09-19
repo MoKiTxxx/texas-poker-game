@@ -1,4 +1,4 @@
-name: Flop+turn depth CFR live A/B holdout
+name: Flop+turn depth CFR iteration sweep
 
 on:
   pull_request:
@@ -12,29 +12,24 @@ on:
       - .github/workflows/benchmark-flop-turn-cfr-live.yml
 
 jobs:
-  holdout:
+  sweep:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
-        include:
-          - stack: 15
-            seed: 15151515
-          - stack: 18
-            seed: 18181818
-          - stack: 20
-            seed: 20202020
+        stack: [12, 15, 18, 20]
+        iterations: [300, 600, 1200]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run duplicate flop+turn CFR holdout
+      - name: Run duplicate flop+turn CFR iteration sweep
         env:
           BENCH_STACK_BB: ${{ matrix.stack }}
-          BENCH_PAIRS: "1000"
-          BENCH_CFR_ITERATIONS: "600"
-          BENCH_SEED: ${{ matrix.seed }}
+          BENCH_PAIRS: "300"
+          BENCH_CFR_ITERATIONS: ${{ matrix.iterations }}
+          BENCH_SEED: "42424242"
         run: node benchmark-flop-cfr-live.js

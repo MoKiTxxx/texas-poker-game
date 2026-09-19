@@ -1,13 +1,7 @@
 name: Defensive Range-MC Duplicate Benchmark
 
 on:
-  pull_request:
-    branches:
-      - feature/defensive-range-mc
-    paths:
-      - benchmark-defensive-duplicate.js
-      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
-      - .github/workflows/benchmark-defensive.yml
+  workflow_dispatch:
 
 jobs:
   duplicate:
@@ -15,7 +9,6 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 6
       matrix:
         seed: [577215, 693147, 707106, 866025, 915965, 112358]
     steps:

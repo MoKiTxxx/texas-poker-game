@@ -1,5 +1,8 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+
 const RANK_SYMBOLS = ["A","K","Q","J","T","9","8","7","6","5","4","3","2"];
 
 const EXPLICIT_STARTING_HAND_RANKING = [
@@ -86,6 +89,66 @@ function buildComboDistribution(ranking = buildStartingHandRanking169()) {
   return counts.map(x => x / total);
 }
 
+class PrecomputedEquityOracle {
+  constructor(options = {}) {
+    const dataPath = options.dataPath ||
+      path.join(__dirname, "data", "preflop-equity-169.json");
+    const payload = options.payload || JSON.parse(fs.readFileSync(dataPath, "utf8"));
+
+    if (!Array.isArray(payload.classes) || payload.classes.length !== 169) {
+      throw new Error("preflop equity dataset must contain 169 classes");
+    }
+
+    const expectedUpper = 169 * 170 / 2;
+    if (!Array.isArray(payload.upper) || payload.upper.length !== expectedUpper) {
+      throw new Error("preflop equity upper triangle has wrong length");
+    }
+
+    this.meta = payload._meta || {};
+    this.classes = payload.classes.slice();
+    this.upper = Float64Array.from(payload.upper);
+    this.index = new Map(this.classes.map((hand, i) => [hand, i]));
+
+    if (this.meta.unit && this.meta.unit !== "fraction, win + tie/2") {
+      throw new Error("unsupported preflop equity unit: " + this.meta.unit);
+    }
+  }
+
+  _upperOffset(i, j) {
+    // Row i stores j=i..168. Number of entries before row i:
+    // i*n - i*(i-1)/2, with n=169.
+    return i * 169 - (i * (i - 1)) / 2 + (j - i);
+  }
+
+  equity(handA, handB) {
+    const i = this.index.get(handA);
+    const j = this.index.get(handB);
+
+    if (i === undefined || j === undefined) {
+      throw new Error(`Unknown hand class: ${handA} vs ${handB}`);
+    }
+
+    if (i <= j) {
+      return this.upper[this._upperOffset(i, j)];
+    }
+
+    return 1 - this.upper[this._upperOffset(j, i)];
+  }
+
+  matrix(ranking = buildStartingHandRanking169()) {
+    const n = ranking.length;
+    const out = new Float64Array(n * n);
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        out[i * n + j] = this.equity(ranking[i], ranking[j]);
+      }
+    }
+
+    return out;
+  }
+}
+
 class RankProxyEquityOracle {
   constructor(ranking = buildStartingHandRanking169(), options = {}) {
     this.ranking = ranking.slice();
@@ -131,5 +194,6 @@ module.exports = {
   buildStartingHandRanking169,
   comboCount,
   buildComboDistribution,
+  PrecomputedEquityOracle,
   RankProxyEquityOracle
 };

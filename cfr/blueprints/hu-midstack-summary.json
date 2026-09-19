@@ -1,0 +1,103 @@
+{
+  "version": "hu-midstack-cfr-grid-v1",
+  "iterations": 3000000,
+  "seed": 1,
+  "stacks": {
+    "12": {
+      "file": "hu-midstack-12bb.json",
+      "metrics": {
+        "value": -0.03750068934576914,
+        "bestResponseSB": -0.024295530282583855,
+        "bestResponseBB": -0.04739052824658263,
+        "nashConv": 0.023094997963998776,
+        "exploitability": 0.011547498981999388,
+        "rootActionFrequencies": {
+          "fold": 0.18386986829416035,
+          "limp": 0.4592593561356083,
+          "minraise": 0.0016466740908940168,
+          "shove": 0.3552241014793366
+        }
+      },
+      "continuationValue": {
+        "kind": "equity-realization-approximation-v1",
+        "baseRealization": 0.8,
+        "maxRealization": 0.94,
+        "positionBonus": 0.02,
+        "positionSprBonus": 0.01,
+        "exactPostflopSolver": false
+      }
+    },
+    "15": {
+      "file": "hu-midstack-15bb.json",
+      "metrics": {
+        "value": -0.03973399861418517,
+        "bestResponseSB": -0.02334481665770779,
+        "bestResponseBB": -0.05258183435516958,
+        "nashConv": 0.029237017697461794,
+        "exploitability": 0.014618508848730897,
+        "rootActionFrequencies": {
+          "fold": 0.08365048224400871,
+          "limp": 0.6649909526915386,
+          "minraise": 0.002281179308942294,
+          "shove": 0.24907738575550978
+        }
+      },
+      "continuationValue": {
+        "kind": "equity-realization-approximation-v1",
+        "baseRealization": 0.8,
+        "maxRealization": 0.94,
+        "positionBonus": 0.02,
+        "positionSprBonus": 0.01,
+        "exactPostflopSolver": false
+      }
+    },
+    "18": {
+      "file": "hu-midstack-18bb.json",
+      "metrics": {
+        "value": -0.03562444997334293,
+        "bestResponseSB": -0.016731139692919436,
+        "bestResponseBB": -0.05193814933971245,
+        "nashConv": 0.03520700964679301,
+        "exploitability": 0.017603504823396506,
+        "rootActionFrequencies": {
+          "fold": 0.02288636392652223,
+          "limp": 0.7781755079076494,
+          "minraise": 0.004743253559847038,
+          "shove": 0.19419487460598053
+        }
+      },
+      "continuationValue": {
+        "kind": "equity-realization-approximation-v1",
+        "baseRealization": 0.8,
+        "maxRealization": 0.94,
+        "positionBonus": 0.02,
+        "positionSprBonus": 0.01,
+        "exactPostflopSolver": false
+      }
+    },
+    "20": {
+      "file": "hu-midstack-20bb.json",
+      "metrics": {
+        "value": -0.03230473576027092,
+        "bestResponseSB": -0.011821701325381349,
+        "bestResponseBB": -0.05063865590500518,
+        "nashConv": 0.03881695457962383,
+        "exploitability": 0.019408477289811914,
+        "rootActionFrequencies": {
+          "fold": 0.010628054627356201,
+          "limp": 0.813060945122186,
+          "minraise": 0.012701396266036733,
+          "shove": 0.16360960398442026
+        }
+      },
+      "continuationValue": {
+        "kind": "equity-realization-approximation-v1",
+        "baseRealization": 0.8,
+        "maxRealization": 0.94,
+        "positionBonus": 0.02,
+        "positionSprBonus": 0.01,
+        "exactPostflopSolver": false
+      }
+    }
+  }
+}

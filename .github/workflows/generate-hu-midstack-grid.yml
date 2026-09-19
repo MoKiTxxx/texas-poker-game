@@ -1,0 +1,42 @@
+name: Generate HU midstack CFR blueprints
+
+on:
+  push:
+    branches:
+      - feature/hu-midstack-cfr
+    paths:
+      - cfr/hu-midstack-cfr.js
+      - cfr/generate-hu-midstack-grid.js
+      - .github/workflows/generate-hu-midstack-grid.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/hu-midstack-cfr
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Generate 12/15/18/20BB blueprints
+        run: node cfr/generate-hu-midstack-grid.js 3000000
+      - name: Commit deterministic blueprint grid
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cfr/blueprints/hu-midstack-12bb.json
+          git add cfr/blueprints/hu-midstack-15bb.json
+          git add cfr/blueprints/hu-midstack-18bb.json
+          git add cfr/blueprints/hu-midstack-20bb.json
+          git add cfr/blueprints/hu-midstack-summary.json
+          if git diff --cached --quiet; then
+            echo "Blueprints already up to date."
+          else
+            git commit -m "Generate 12-20BB HU midstack CFR blueprints"
+            git push origin HEAD:feature/hu-midstack-cfr
+          fi

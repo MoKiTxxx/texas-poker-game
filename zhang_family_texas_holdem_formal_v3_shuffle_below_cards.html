@@ -8366,6 +8366,48 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
     const multiway = opponentCount >= 2;
     const severePressure = toCall > currentPot * 0.85;
     const purpose = plan.v32Purpose || plan.purpose || (lastSizingDebug ? lastSizingDebug.purpose : null) || "-";
+    const streetKey = isRiver ? "river" : (board.length === 4 ? "turn" : "flop");
+    const opponentModelConfidences = players
+        .map((opp, i) => ({ opp, i }))
+        .filter(x => x.i !== index && x.opp && !x.opp.folded && x.opp.hole && x.opp.hole.length === 2)
+        .map(x => {
+            try {
+                const confidence = getOpponentStreetConfidence(x.i);
+                return Number(confidence[streetKey] || 0);
+            } catch (err) {
+                return 0;
+            }
+        });
+    const opponentModelConfidence = opponentModelConfidences.length
+        ? Math.max(...opponentModelConfidences)
+        : 0;
+    const modelConfidenceCutoff = 0.45;
+
+    // v38C: once the explicit opponent model has enough street-specific data,
+    // trust the blueprint/exploit layer instead of letting a generic showdown
+    // equity estimate veto it. Raw MC is primarily an early-sample safety guard.
+    if (opponentModelConfidence >= modelConfidenceCutoff) {
+        return {
+            ...plan,
+            defensiveMcOverlay: {
+                version: "v38C-confidence-gated-defensive-range-mc",
+                originalType: plan.type,
+                finalType: plan.type,
+                purpose,
+                rawMonteCarloEquity,
+                potOdds,
+                opponentCount,
+                multiway,
+                severePressure,
+                opponentModelConfidence,
+                modelConfidenceCutoff,
+                reason: "opponent-model-confident-skip",
+                applied: false,
+                aggressionCanOnlyDecrease: true,
+                foldCanNeverUpgradeToCall: true
+            }
+        };
+    }
 
     // Monte Carlo is noisy. Require a small edge before it is allowed to
     // rescue a fold, and give river/multiway/large-bet spots a wider guard.
@@ -8410,7 +8452,7 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
         ...plan,
         type: finalType,
         defensiveMcOverlay: {
-            version: "v38B-defensive-range-mc-guard",
+            version: "v38C-confidence-gated-defensive-range-mc",
             originalType,
             finalType,
             purpose,
@@ -8422,7 +8464,10 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
             opponentCount,
             multiway,
             severePressure,
+            opponentModelConfidence,
+            modelConfidenceCutoff,
             reason,
+            applied: finalType !== originalType,
             aggressionCanOnlyDecrease: true,
             foldCanNeverUpgradeToCall: true
         }

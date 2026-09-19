@@ -1,4 +1,4 @@
-name: HU midstack CFR live A/B sweep
+name: HU midstack CFR live A/B holdout
 
 on:
   pull_request:
@@ -10,24 +10,31 @@ on:
       - .github/workflows/benchmark-hu-midstack-live.yml
 
 jobs:
-  sweep:
+  holdout:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix:
-        stack: [12, 15, 18, 20]
-        mix: [0.5, 1.0]
+        include:
+          - stack: 12
+            seed: 12012012
+          - stack: 15
+            seed: 15015015
+          - stack: 18
+            seed: 18018018
+          - stack: 20
+            seed: 20020020
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run duplicate HU midstack A/B
+      - name: Run duplicate HU midstack CFR holdout
         env:
           BENCH_STACK_BB: ${{ matrix.stack }}
-          BENCH_MIX: ${{ matrix.mix }}
-          BENCH_PAIRS: "200"
-          BENCH_SEED: "731731"
+          BENCH_MIX: "1.0"
+          BENCH_PAIRS: "1000"
+          BENCH_SEED: ${{ matrix.seed }}
         run: node benchmark-hu-midstack-live.js

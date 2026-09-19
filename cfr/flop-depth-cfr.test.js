@@ -157,6 +157,69 @@ function sumObject(obj) {
   );
 })();
 
+(function testResolveFromCurrentPublicNode() {
+  const flop = [
+    card(12, 0),
+    card(7, 1),
+    card(4, 2)
+  ];
+
+  const solver = new FlopDepthLimitedCFR({
+    flop,
+    potBB: 4,
+    stackBB: 16,
+    rootNode: "IP_AFTER_CHECK",
+    initialState: {
+      oopContribution: 0,
+      ipContribution: 0
+    },
+    seed: 2026
+  });
+
+  solver.train(15000);
+  const strategy = solver.rootBucketStrategy(7);
+  const meta = solver.metadata();
+
+  assert.deepStrictEqual(
+    Object.keys(strategy),
+    ["check", "bet33", "bet75", "jam"]
+  );
+
+  assert.strictEqual(
+    meta.rootNode,
+    "IP_AFTER_CHECK"
+  );
+
+  assert.deepStrictEqual(
+    meta.initialState,
+    {
+      oopContribution: 0,
+      ipContribution: 0
+    }
+  );
+
+  const responseSolver = new FlopDepthLimitedCFR({
+    flop,
+    potBB: 4,
+    stackBB: 16,
+    rootNode: "IP_VS_OOP_B33",
+    initialState: {
+      oopContribution: 1.32,
+      ipContribution: 0
+    },
+    seed: 2027
+  });
+
+  responseSolver.train(15000);
+
+  assert.deepStrictEqual(
+    Object.keys(
+      responseSolver.rootBucketStrategy(7)
+    ),
+    ["fold", "call", "jam"]
+  );
+})();
+
 (function testTrainingAndStrategyLegality() {
   const flop = [
     card(13, 0),

@@ -5,7 +5,7 @@ const path = require("path");
 const {
   buildStartingHandRanking169,
   buildComboDistribution,
-  RankProxyEquityOracle
+  PrecomputedEquityOracle
 } = require("./holdem169");
 
 function regretMatchedStrategy(regretA, regretB) {
@@ -24,7 +24,7 @@ class HeadsUpPushFoldCFRPlus {
     this.ranking = (options.ranking || buildStartingHandRanking169()).slice();
     this.typeProb = Float64Array.from(options.typeProb || buildComboDistribution(this.ranking));
 
-    const oracle = options.equityOracle || new RankProxyEquityOracle(this.ranking);
+    const oracle = options.equityOracle || new PrecomputedEquityOracle();
     this.equityMatrix = options.equityMatrix || oracle.matrix();
 
     this.n = this.ranking.length;
@@ -284,7 +284,7 @@ class HeadsUpPushFoldCFRPlus {
         bigBlindBB: this.bigBlind,
         handClasses: this.n,
         chanceModel: "independent-combo-weighted-169-class",
-        equityOracle: "rank-proxy-v1"
+        equityOracle: "poker-yoga-preflop-equity-1m-seed1"
       },
       iterations: this.iterations,
       metrics: this.metrics(profile),

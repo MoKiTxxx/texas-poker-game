@@ -89,6 +89,107 @@ function buildComboDistribution(ranking = buildStartingHandRanking169()) {
   return counts.map(x => x / total);
 }
 
+function buildConcreteCombos(notation) {
+  const suits = [0, 1, 2, 3];
+  const rankA = rankValue(notation[0]);
+  const rankB = rankValue(notation[1]);
+  const combos = [];
+
+  function cardId(rank, suit) {
+    return (rank - 2) * 4 + suit;
+  }
+
+  if (notation.length === 2) {
+    for (let s1 = 0; s1 < suits.length; s1++) {
+      for (let s2 = s1 + 1; s2 < suits.length; s2++) {
+        combos.push([cardId(rankA, s1), cardId(rankA, s2)]);
+      }
+    }
+    return combos;
+  }
+
+  if (notation.endsWith("s")) {
+    for (const suit of suits) {
+      combos.push([cardId(rankA, suit), cardId(rankB, suit)]);
+    }
+    return combos;
+  }
+
+  for (const s1 of suits) {
+    for (const s2 of suits) {
+      if (s1 === s2) continue;
+      combos.push([cardId(rankA, s1), cardId(rankB, s2)]);
+    }
+  }
+
+  return combos;
+}
+
+function concreteCombosCompatible(a, b) {
+  return a[0] !== b[0] && a[0] !== b[1] &&
+    a[1] !== b[0] && a[1] !== b[1];
+}
+
+function buildJointClassDistribution(ranking = buildStartingHandRanking169()) {
+  const n = ranking.length;
+  const combos = ranking.map(buildConcreteCombos);
+  const compatibleCounts = new Uint16Array(n * n);
+  let totalOrderedDeals = 0;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let count = 0;
+      for (const a of combos[i]) {
+        for (const b of combos[j]) {
+          if (concreteCombosCompatible(a, b)) count++;
+        }
+      }
+      compatibleCounts[i * n + j] = count;
+      totalOrderedDeals += count;
+    }
+  }
+
+  const expectedDeals = 1326 * 1225;
+  if (totalOrderedDeals !== expectedDeals) {
+    throw new Error(`compatible combo count mismatch: ${totalOrderedDeals} !== ${expectedDeals}`);
+  }
+
+  const joint = new Float64Array(n * n);
+  const marginalSB = new Float64Array(n);
+  const marginalBB = new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const p = compatibleCounts[i * n + j] / totalOrderedDeals;
+      joint[i * n + j] = p;
+      marginalSB[i] += p;
+      marginalBB[j] += p;
+    }
+  }
+
+  const bbGivenSB = new Float64Array(n * n);
+  const sbGivenBB = new Float64Array(n * n);
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const p = joint[i * n + j];
+      bbGivenSB[i * n + j] = p / marginalSB[i];
+      // Stored with row=BB class j, column=SB class i.
+      sbGivenBB[j * n + i] = p / marginalBB[j];
+    }
+  }
+
+  return {
+    compatibleCounts,
+    totalOrderedDeals,
+    joint,
+    marginalSB,
+    marginalBB,
+    bbGivenSB,
+    sbGivenBB
+  };
+}
+
 class PrecomputedEquityOracle {
   constructor(options = {}) {
     const dataPath = options.dataPath ||
@@ -194,6 +295,9 @@ module.exports = {
   buildStartingHandRanking169,
   comboCount,
   buildComboDistribution,
+  buildConcreteCombos,
+  concreteCombosCompatible,
+  buildJointClassDistribution,
   PrecomputedEquityOracle,
   RankProxyEquityOracle
 };

@@ -9169,7 +9169,16 @@ function flopCfrWorkerBootstrap() {
         OOP_VS_IP_JAM_AFTER_B33: { player: 0, actions: ["fold", "call"] },
         OOP_VS_IP_JAM_AFTER_B75: { player: 0, actions: ["fold", "call"] },
         IP_VS_OOP_JAM_AFTER_B33: { player: 1, actions: ["fold", "call"] },
-        IP_VS_OOP_JAM_AFTER_B75: { player: 1, actions: ["fold", "call"] }
+        IP_VS_OOP_JAM_AFTER_B75: { player: 1, actions: ["fold", "call"] },
+
+        TURN_OOP_ROOT: { player: 0, actions: ["check", "bet50", "jam"] },
+        TURN_IP_AFTER_CHECK: { player: 1, actions: ["check", "bet50", "jam"] },
+        TURN_IP_VS_OOP_B50: { player: 1, actions: ["fold", "call", "jam"] },
+        TURN_OOP_VS_IP_B50: { player: 0, actions: ["fold", "call", "jam"] },
+        TURN_IP_VS_OOP_JAM: { player: 1, actions: ["fold", "call"] },
+        TURN_OOP_VS_IP_JAM: { player: 0, actions: ["fold", "call"] },
+        TURN_OOP_VS_IP_JAM_AFTER_B50: { player: 0, actions: ["fold", "call"] },
+        TURN_IP_VS_OOP_JAM_AFTER_B50: { player: 1, actions: ["fold", "call"] }
     };
 
     function cardRank(id) {
@@ -9341,6 +9350,37 @@ function flopCfrWorkerBootstrap() {
         return best;
     }
 
+    function bestOfAtLeastFive(ids) {
+        if (!Array.isArray(ids) || ids.length < 5 || ids.length > 7) {
+            throw new Error("bestOfAtLeastFive expects 5 to 7 cards");
+        }
+
+        if (ids.length === 5) return evaluateFive(ids);
+        if (ids.length === 7) return bestOfSeven(ids);
+
+        let best = null;
+
+        for (let a = 0; a < ids.length - 4; a++) {
+            for (let b = a + 1; b < ids.length - 3; b++) {
+                for (let cc = b + 1; cc < ids.length - 2; cc++) {
+                    for (let d = cc + 1; d < ids.length - 1; d++) {
+                        for (let e = d + 1; e < ids.length; e++) {
+                            const value = evaluateFive([
+                                ids[a], ids[b], ids[cc], ids[d], ids[e]
+                            ]);
+
+                            if (best === null || compareHandValues(value, best) > 0) {
+                                best = value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return best;
+    }
+
     function showdownShare(holeA, holeB, board5) {
         const a = bestOfSeven(holeA.concat(board5));
         const b = bestOfSeven(holeB.concat(board5));
@@ -9373,11 +9413,11 @@ function flopCfrWorkerBootstrap() {
         };
     }
 
-    function flopBucket(hole, flop) {
-        const five = hole.concat(flop);
-        const made = evaluateFive(five);
+    function postflopBucket(hole, boardCards) {
+        const allCards = hole.concat(boardCards);
+        const made = bestOfAtLeastFive(allCards);
         const holeRanks = hole.map(cardRank);
-        const boardRanks = flop.map(cardRank);
+        const boardRanks = boardCards.map(cardRank);
         const maxBoard = Math.max.apply(null, boardRanks);
 
         if (made.category >= 4) return 11;
@@ -9397,9 +9437,9 @@ function flopCfrWorkerBootstrap() {
             return 6;
         }
 
-        const suits = suitCounts(five);
+        const suits = suitCounts(allCards);
         const flushDraw = suits.some(x => x === 4);
-        const straight = straightDrawInfo(five);
+        const straight = straightDrawInfo(allCards);
 
         if (flushDraw && (straight.openEnded || straight.gutshot)) return 5;
         if (flushDraw) return 4;
@@ -9408,6 +9448,10 @@ function flopCfrWorkerBootstrap() {
 
         if (holeRanks[0] > maxBoard && holeRanks[1] > maxBoard) return 1;
         return 0;
+    }
+
+    function flopBucket(hole, flopCards) {
+        return postflopBucket(hole, flopCards);
     }
 
     class Rng {
@@ -9652,11 +9696,15 @@ function flopCfrWorkerBootstrap() {
             const river = deck[ri];
             const board5 = this.flop.concat([turn, river]);
 
+            const turnBoard = this.flop.concat([turn]);
+
             return {
                 oopHole,
                 ipHole,
                 oopBucket: flopBucket(oopHole, this.flop),
                 ipBucket: flopBucket(ipHole, this.flop),
+                oopTurnBucket: postflopBucket(oopHole, turnBoard),
+                ipTurnBucket: postflopBucket(ipHole, turnBoard),
                 oopShare: showdownShare(oopHole, ipHole, board5)
             };
         }
@@ -9731,7 +9779,7 @@ function flopCfrWorkerBootstrap() {
             }
 
             if (nodeId === "IP_AFTER_CHECK") {
-                if (action === "check") return { terminal: this.showdownUtility(state, sample) };
+                if (action === "check") return { node: "TURN_OOP_ROOT", state };
                 if (action === "bet33") return { node: "OOP_VS_IP_B33", state: this.bet(state, 1, 0.33) };
                 if (action === "bet75") return { node: "OOP_VS_IP_B75", state: this.bet(state, 1, 0.75) };
                 if (action === "jam") return { node: "OOP_VS_IP_JAM", state: this.jam(state, 1) };
@@ -9739,7 +9787,7 @@ function flopCfrWorkerBootstrap() {
 
             if (nodeId === "IP_VS_OOP_B33" || nodeId === "IP_VS_OOP_B75") {
                 if (action === "fold") return { terminal: this.foldUtility(state, 1) };
-                if (action === "call") return { terminal: this.showdownUtility(this.callToMatch(state, 1), sample) };
+                if (action === "call") return { node: "TURN_OOP_ROOT", state: this.callToMatch(state, 1) };
                 if (action === "jam") {
                     return {
                         node: nodeId === "IP_VS_OOP_B33"
@@ -9752,7 +9800,7 @@ function flopCfrWorkerBootstrap() {
 
             if (nodeId === "OOP_VS_IP_B33" || nodeId === "OOP_VS_IP_B75") {
                 if (action === "fold") return { terminal: this.foldUtility(state, 0) };
-                if (action === "call") return { terminal: this.showdownUtility(this.callToMatch(state, 0), sample) };
+                if (action === "call") return { node: "TURN_OOP_ROOT", state: this.callToMatch(state, 0) };
                 if (action === "jam") {
                     return {
                         node: nodeId === "OOP_VS_IP_B33"
@@ -9769,7 +9817,14 @@ function flopCfrWorkerBootstrap() {
                 nodeId === "IP_VS_OOP_JAM_AFTER_B75"
             ) {
                 if (action === "fold") return { terminal: this.foldUtility(state, 1) };
-                if (action === "call") return { terminal: this.showdownUtility(this.callToMatch(state, 1), sample) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
             }
 
             if (
@@ -9778,7 +9833,92 @@ function flopCfrWorkerBootstrap() {
                 nodeId === "OOP_VS_IP_JAM_AFTER_B75"
             ) {
                 if (action === "fold") return { terminal: this.foldUtility(state, 0) };
-                if (action === "call") return { terminal: this.showdownUtility(this.callToMatch(state, 0), sample) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            if (nodeId === "TURN_OOP_ROOT") {
+                if (action === "check") return { node: "TURN_IP_AFTER_CHECK", state };
+                if (action === "bet50") return { node: "TURN_IP_VS_OOP_B50", state: this.bet(state, 0, 0.50) };
+                if (action === "jam") return { node: "TURN_IP_VS_OOP_JAM", state: this.jam(state, 0) };
+            }
+
+            if (nodeId === "TURN_IP_AFTER_CHECK") {
+                if (action === "check") return { terminal: this.showdownUtility(state, sample) };
+                if (action === "bet50") return { node: "TURN_OOP_VS_IP_B50", state: this.bet(state, 1, 0.50) };
+                if (action === "jam") return { node: "TURN_OOP_VS_IP_JAM", state: this.jam(state, 1) };
+            }
+
+            if (nodeId === "TURN_IP_VS_OOP_B50") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
+                if (action === "jam") {
+                    return {
+                        node: "TURN_OOP_VS_IP_JAM_AFTER_B50",
+                        state: this.jam(state, 1)
+                    };
+                }
+            }
+
+            if (nodeId === "TURN_OOP_VS_IP_B50") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
+                if (action === "jam") {
+                    return {
+                        node: "TURN_IP_VS_OOP_JAM_AFTER_B50",
+                        state: this.jam(state, 0)
+                    };
+                }
+            }
+
+            if (
+                nodeId === "TURN_IP_VS_OOP_JAM" ||
+                nodeId === "TURN_IP_VS_OOP_JAM_AFTER_B50"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            if (
+                nodeId === "TURN_OOP_VS_IP_JAM" ||
+                nodeId === "TURN_OOP_VS_IP_JAM_AFTER_B50"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
             }
 
             throw new Error("unsupported transition " + nodeId + " / " + action);
@@ -9787,7 +9927,10 @@ function flopCfrWorkerBootstrap() {
         cfr(nodeId, state, sample, reachOop, reachIp, updatePlayer) {
             const node = FLOP_TREE[nodeId];
             const family = this.families[nodeId];
-            const bucket = node.player === 0 ? sample.oopBucket : sample.ipBucket;
+            const turnNode = nodeId.indexOf("TURN_") === 0;
+            const bucket = node.player === 0
+                ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+                : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
             const offset = family.offset(bucket);
             family.visits[bucket]++;
 
@@ -9832,7 +9975,10 @@ function flopCfrWorkerBootstrap() {
         accumulate(nodeId, state, sample, reachOop, reachIp, weight) {
             const node = FLOP_TREE[nodeId];
             const family = this.families[nodeId];
-            const bucket = node.player === 0 ? sample.oopBucket : sample.ipBucket;
+            const turnNode = nodeId.indexOf("TURN_") === 0;
+            const bucket = node.player === 0
+                ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+                : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
             const offset = family.offset(bucket);
             const ownReach = node.player === 0 ? reachOop : reachIp;
 
@@ -9939,6 +10085,8 @@ function flopCfrWorkerBootstrap() {
                 bucketVisits: strategy.visits,
                 iterations: solver.iterations,
                 normalizedRegret: solver.normalizedRegret(),
+                turnBettingSolved: true,
+                riverBettingSolved: false,
                 elapsedMs: Date.now() - started
             });
         } catch (err) {
@@ -10484,6 +10632,8 @@ function recordFlopCfrDecisionDebug(index, result) {
             stackBB: result.stackBB,
             potBB: result.potBB,
             mix: result.mix,
+            turnBettingSolved: !!result.turnBettingSolved,
+            riverBettingSolved: !!result.riverBettingSolved,
             futureBettingSolved: false
         }
     };

@@ -214,11 +214,12 @@ function sumObject(obj) {
 
   const air = solver.rootBucketStrategy(0);
   const overpair = solver.rootBucketStrategy(8);
-  const straightPlus = solver.rootBucketStrategy(11);
+  const rootFamily = solver.families.get("OOP_ROOT");
+  const straightPlusVisits = rootFamily.visits[11];
 
   console.log("root air:", air);
   console.log("root overpair:", overpair);
-  console.log("root straightPlus:", straightPlus);
+  console.log("straightPlus visits:", straightPlusVisits);
 
   assert.ok(
     sumObject(air) > 0.999999
@@ -230,10 +231,10 @@ function sumObject(obj) {
     "strong made hands should use large aggression more often than air on this dry flop"
   );
 
-  assert.ok(
-    straightPlus.jam + straightPlus.bet75 >
-      air.jam + air.bet75,
-    "straight+ bucket should be more aggressively sized than air"
+  assert.strictEqual(
+    straightPlusVisits,
+    0,
+    "straight+ is unreachable on the K83 rainbow reference flop and must not be treated as a learned bucket"
   );
 })();
 

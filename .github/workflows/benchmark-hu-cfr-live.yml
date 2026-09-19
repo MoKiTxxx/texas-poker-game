@@ -1,0 +1,33 @@
+name: HU CFR live A/B sweep
+
+on:
+  pull_request:
+    branches:
+      - feature/hu-preflop-cfr
+    paths:
+      - benchmark-hu-cfr-live.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/benchmark-hu-cfr-live.yml
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        stack: [5, 8, 10, 12, 15]
+        mix: [0.25, 0.5, 0.75, 1.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run duplicate HU short-stack A/B
+        env:
+          BENCH_STACK_BB: ${{ matrix.stack }}
+          BENCH_MIX: ${{ matrix.mix }}
+          BENCH_PAIRS: "100"
+          BENCH_SEED: "930001"
+        run: node benchmark-hu-cfr-live.js

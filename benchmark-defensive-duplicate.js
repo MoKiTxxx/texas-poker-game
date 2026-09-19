@@ -323,7 +323,7 @@ return (async()=>{
       throw new Error("Chip conservation failed: "+newProfit+" + "+oldProfit);
     }
 
-    return newProfit/BIG_BLIND;
+    return newProfit/20;
   }
 
   const pairedResults = [];

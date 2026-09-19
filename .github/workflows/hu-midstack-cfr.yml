@@ -9,6 +9,8 @@ on:
       - cfr/hu-midstack-cfr.test.js
       - cfr/export-hu-midstack-blueprint.js
       - cfr/HU_MIDSTACK.md
+      - test-hu-midstack-live-mapping.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
       - .github/workflows/hu-midstack-cfr.yml
   pull_request:
     branches:
@@ -30,5 +32,7 @@ jobs:
         run: node cfr/hu-pushfold-cfr.test.js
       - name: Run 12–20BB midstack regression tests
         run: node cfr/hu-midstack-cfr.test.js
+      - name: Validate live public-history mapping
+        run: node test-hu-midstack-live-mapping.js
       - name: Train 15BB convergence benchmark
-        run: node cfr/hu-midstack-cfr.js 200000 15
+        run: node cfr/hu-midstack-cfr.js 3000000 15

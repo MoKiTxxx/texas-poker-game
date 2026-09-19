@@ -1,0 +1,40 @@
+name: Flop depth CFR live A/B tuning
+
+on:
+  pull_request:
+    branches:
+      - feature/flop-depth-cfr
+    paths:
+      - benchmark-flop-cfr-live.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - cfr/flop-depth-cfr.js
+      - cfr/holdem-postflop.js
+      - .github/workflows/benchmark-flop-cfr-live.yml
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - stack: 15
+            seed: 151518
+          - stack: 18
+            seed: 181821
+          - stack: 20
+            seed: 202023
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run duplicate flop-CFR A/B
+        env:
+          BENCH_STACK_BB: ${{ matrix.stack }}
+          BENCH_PAIRS: "200"
+          BENCH_CFR_ITERATIONS: "600"
+          BENCH_SEED: ${{ matrix.seed }}
+        run: node benchmark-flop-cfr-live.js

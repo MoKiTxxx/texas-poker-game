@@ -79,3 +79,62 @@ Target blueprint grid:
 - 20BB
 
 The existing 5/8/10BB push/fold blueprints remain unchanged.
+
+
+## Live integration
+
+The standalone HTML now keeps the two preflop CFR regimes separate:
+
+- 5–10BB: existing push/fold CFR path (unchanged);
+- 12–20BB: this midstack tree;
+- uncovered histories or off-tree bet sizes: safe fallback to the existing v37 preflop policy.
+
+The live midstack classifier only recognizes the trained public action sizes (2BB / 3BB / 6BB / shove). A v37-style 2.5x raise is deliberately treated as off-tree rather than silently mapped to a CFR node.
+
+A synthetic live-history regression covers all ten public nodes:
+
+- ROOT
+- BB_LIMP
+- SB_VS_LIMP_RAISE3
+- BB_VS_LIMP_RESHOVE
+- SB_VS_LIMP_SHOVE
+- BB_MINRAISE
+- SB_VS_3BET6
+- BB_VS_3BET_RESHOVE
+- SB_VS_MINRAISE_SHOVE
+- BB_VS_SHOVE
+
+The 12–20BB midstack feature flag is enabled by default on this feature branch after holdout validation. It remains isolated from `main`.
+
+## 3M blueprint grid
+
+The deterministic grid generator uses seed 1 and 3,000,000 sampled CFR iterations per stack.
+
+| Stack | Fold | Limp | Min-raise | Shove | Abstract-game exploitability |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 12BB | 18.39% | 45.93% | 0.16% | 35.52% | 0.01155 |
+| 15BB | 8.37% | 66.50% | 0.23% | 24.91% | 0.01462 |
+| 18BB | 2.29% | 77.82% | 0.47% | 19.42% | 0.01760 |
+| 20BB | 1.06% | 81.31% | 1.27% | 16.36% | 0.01941 |
+
+The very low min-raise frequency is a learned result of this abstraction and continuation model; it is not manually forced upward.
+
+## Simulator A/B validation
+
+Final holdout used unseen seeds, full CFR policy (`mix=1.0`), duplicate hands, and the same postflop heuristic policy for OLD and NEW.
+
+| Stack | Hands | NEW vs v37 |
+| --- | ---: | ---: |
+| 12BB | 2,000 | +15.675 bb/100 |
+| 15BB | 2,000 | +26.950 bb/100 |
+| 18BB | 2,000 | +41.125 bb/100 |
+| 20BB | 2,000 | +42.175 bb/100 |
+
+Pooled over 8,000 hands:
+
+```
++31.4812 bb/100
+95% duplicate-pair CI: [+26.3409, +36.6216]
+```
+
+This is evidence that the midstack CFR integration materially improves performance **against the existing v37 AI inside this simulator**. It is not a claim that the continuation abstraction solves real 12–20BB heads-up no-limit Hold'em.

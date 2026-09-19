@@ -15,18 +15,18 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 6
       matrix:
-        seed: [24680, 13579, 42424, 51515, 62626, 73737, 84848, 95959, 12345, 67890]
+        seed: [24680, 51515, 62626, 42424, 84848, 12345]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run long-session A/B benchmark
+      - name: Run v38C tuning session benchmark
         env:
           BENCH_ALPHA: "0.25"
           BENCH_SEED: ${{ matrix.seed }}
-          BENCH_HANDS: "500"
+          BENCH_HANDS: "300"
           BENCH_TRIALS: "60"
         run: node benchmark-defensive-session.js

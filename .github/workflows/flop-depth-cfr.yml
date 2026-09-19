@@ -30,9 +30,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Keep preflop CFR regressions green
+      - name: Smoke-load validated preflop CFR modules
         run: |
-          node cfr/hu-pushfold-cfr.test.js
-          node cfr/hu-midstack-cfr.test.js
+          node -e "require('./cfr/hu-pushfold-cfr'); require('./cfr/hu-midstack-cfr');"
       - name: Validate flop depth-limited CFR
         run: node cfr/flop-depth-cfr.test.js

@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        seed: [314159, 271828, 161803, 141421, 173205, 223606]
+        seed: [577215, 693147, 707106, 866025, 915965, 112358]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

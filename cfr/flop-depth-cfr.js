@@ -253,12 +253,21 @@ class FlopDepthLimitedCFR {
     const riverIndex = this.rng.int(deck.length);
     const river = deck[riverIndex];
 
+    const runout = [turn, river];
+    const board5 = this.flop.concat(runout);
+    const oopShare = showdownShare(
+      oopHole,
+      ipHole,
+      board5
+    );
+
     return {
       oopHole,
       ipHole,
       oopBucket: flopBucket(oopHole, this.flop),
       ipBucket: flopBucket(ipHole, this.flop),
-      runout: [turn, river]
+      runout,
+      oopShare
     };
   }
 
@@ -296,20 +305,13 @@ class FlopDepthLimitedCFR {
   }
 
   _showdownUtility(state, sample) {
-    const board5 = this.flop.concat(sample.runout);
-    const share = showdownShare(
-      sample.oopHole,
-      sample.ipHole,
-      board5
-    );
-
     const totalPot =
       this.potBB +
       state.oopContribution +
       state.ipContribution;
 
     return (
-      share * totalPot -
+      sample.oopShare * totalPot -
       state.oopContribution
     );
   }

@@ -1,5 +1,9 @@
 name: HU flop depth CFR validation
 
+concurrency:
+  group: flop-depth-cfr-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

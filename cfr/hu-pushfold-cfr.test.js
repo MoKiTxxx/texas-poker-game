@@ -5,6 +5,7 @@ const {
   buildStartingHandRanking169,
   comboCount,
   buildComboDistribution,
+  PrecomputedEquityOracle,
   RankProxyEquityOracle
 } = require("./holdem169");
 const {
@@ -32,21 +33,38 @@ function approx(actual, expected, tolerance, message) {
   approx(distribution.reduce((a, b) => a + b, 0), 1, 1e-12, "combo distribution");
 })();
 
-(function testEquityOracleSymmetry() {
+(function testRealEquityMatrix() {
   const ranking = buildStartingHandRanking169();
-  const oracle = new RankProxyEquityOracle(ranking);
+  const oracle = new PrecomputedEquityOracle();
+
+  assert.strictEqual(oracle.classes.length, 169);
+  assert.strictEqual(oracle.upper.length, 14365);
+  assert.strictEqual(oracle.meta.samplesPerPair, 1000000);
+  assert.strictEqual(oracle.meta.seed, 1);
+  assert.strictEqual(oracle.meta.unit, "fraction, win + tie/2");
+
+  // First published upper-triangle matchup in the source dataset.
+  approx(oracle.equity("AA", "AKs"), 0.8782, 1e-12, "AA vs AKs dataset lookup");
+  approx(oracle.equity("AKs", "AA"), 0.1218, 1e-12, "AKs vs AA reverse lookup");
 
   for (let i = 0; i < ranking.length; i += 13) {
     for (let j = 0; j < ranking.length; j += 17) {
       const a = oracle.equity(ranking[i], ranking[j]);
       const b = oracle.equity(ranking[j], ranking[i]);
+      assert.ok(a >= 0 && a <= 1, `equity out of range: ${ranking[i]} vs ${ranking[j]}`);
       approx(a + b, 1, 1e-12, `equity symmetry ${ranking[i]} vs ${ranking[j]}`);
     }
   }
 
-  assert.ok(oracle.equity("AA", "72o") > 0.8);
-  assert.ok(oracle.equity("72o", "AA") < 0.2);
   approx(oracle.equity("AKs", "AKs"), 0.5, 1e-12, "same class equity");
+  assert.ok(oracle.equity("AA", "72o") > 0.85);
+  assert.ok(oracle.equity("72o", "AA") < 0.15);
+})();
+
+(function testProxyOracleStillAvailableForDiagnostics() {
+  const ranking = buildStartingHandRanking169();
+  const oracle = new RankProxyEquityOracle(ranking);
+  approx(oracle.equity("AKs", "AKs"), 0.5, 1e-12, "proxy same class equity");
 })();
 
 (function testCfrConvergenceAt10BB() {

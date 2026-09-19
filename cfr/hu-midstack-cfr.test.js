@@ -134,13 +134,13 @@ function approx(actual, expected, tolerance, message) {
   });
 
   const m12 = s12.metrics(s12.train(1500000));
-  const m20 = s20.metrics(s20.train(1500000));
+  const m20 = s20.metrics(s20.train(3000000));
 
   console.log("12BB midstack metrics:", m12);
   console.log("20BB midstack metrics:", m20);
 
   assert.ok(m12.exploitability < 0.025);
-  assert.ok(m20.exploitability < 0.025);
+  assert.ok(m20.exploitability < 0.020);
 
   assert.ok(
     m12.rootActionFrequencies.shove >

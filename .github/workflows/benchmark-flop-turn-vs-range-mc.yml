@@ -1,0 +1,43 @@
+name: Flop+turn CFR vs current Range-MC v37
+
+on:
+  pull_request:
+    branches:
+      - feature/flop-depth-cfr
+    paths:
+      - benchmark-flop-cfr-vs-range-mc.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - cfr/flop-depth-cfr.js
+      - cfr/holdem-postflop.js
+      - .github/workflows/benchmark-flop-turn-vs-range-mc.yml
+
+jobs:
+  holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - stack: 12
+            seed: 12121212
+          - stack: 15
+            seed: 15151551
+          - stack: 18
+            seed: 18181881
+          - stack: 20
+            seed: 20202002
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run faithful duplicate A/B
+        env:
+          BENCH_STACK_BB: ${{ matrix.stack }}
+          BENCH_PAIRS: "1000"
+          BENCH_CFR_ITERATIONS: "600"
+          BENCH_MC_TRIALS: "60"
+          BENCH_SEED: ${{ matrix.seed }}
+        run: node benchmark-flop-cfr-vs-range-mc.js

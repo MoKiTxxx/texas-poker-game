@@ -11,7 +11,7 @@ The current abstraction is a heads-up short-stack push/fold game:
 - SB actions: fold / shove.
 - BB response after a shove: fold / call.
 - Private information: 169 standard Hold'em starting-hand classes.
-- Chance weights: 6 pair combos, 4 suited combos, 12 offsuit combos.
+- Chance model: exact blocker-aware weighting over all 1,624,350 ordered non-overlapping private deals (1326 × 1225).
 - Default effective stack: 10 BB.
 
 The solver uses alternating CFR+ with linear average-strategy weighting and reports exact best responses **inside this abstract game**.
@@ -40,6 +40,8 @@ for the `win + tie/2` equity convention.
 This is actual card-runout equity rather than a hand-ranking proxy. It is still a high-precision Monte Carlo dataset rather than exhaustive enumeration of every possible board, so the metadata is preserved and the code does not label it zero-error exact equity.
 
 The old rank proxy remains available only for diagnostics/tests; it is no longer the solver default.
+
+Private-hand chance is also no longer approximated as independent 169-class draws. Concrete 2-card combos are enumerated for each class, incompatible overlapping pairs are removed, and the solver uses exact conditional class distributions (P(H_{BB}\mid H_{SB})) and (P(H_{SB}\mid H_{BB})).
 
 ## Run
 

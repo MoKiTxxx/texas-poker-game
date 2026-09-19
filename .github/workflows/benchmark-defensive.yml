@@ -1,0 +1,31 @@
+name: Defensive Range-MC Duplicate Benchmark
+
+on:
+  pull_request:
+    branches:
+      - feature/defensive-range-mc
+    paths:
+      - benchmark-defensive-duplicate.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/benchmark-defensive.yml
+
+jobs:
+  duplicate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        seed: [314159, 271828, 161803, 141421, 173205, 223606]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run duplicate A/B benchmark
+        env:
+          BENCH_SEED: ${{ matrix.seed }}
+          BENCH_PAIRS: "300"
+          BENCH_TRIALS: "60"
+        run: node benchmark-defensive-duplicate.js

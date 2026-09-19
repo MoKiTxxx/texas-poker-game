@@ -5,7 +5,7 @@ const BASE_SEED = Number(process.env.BENCH_SEED || 424242);
 const PAIRS = Number(process.env.BENCH_PAIRS || 300);
 const MC_TRIALS = Number(process.env.BENCH_TRIALS || 60);
 const START_CHIPS = 2000;
-const BIG_BLIND = 20;
+const BIG_BLIND = 20;\n// v38B benchmark: one-way defensive safety guard.
 
 class FakeClassList {
   add(){} remove(){} toggle(){return false;} contains(){return false;}

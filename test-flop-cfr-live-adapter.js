@@ -224,6 +224,14 @@ return (() => {
     throw new Error("worker returned wrong root node");
   }
 
+  if (workerResult.turnBettingSolved !== true) {
+    throw new Error("worker did not report turn betting as solved");
+  }
+
+  if (workerResult.riverBettingSolved !== false) {
+    throw new Error("worker must keep river betting depth-limited");
+  }
+
   if (
     !Array.isArray(workerResult.actions) ||
     !Array.isArray(workerResult.probabilities) ||
@@ -259,7 +267,9 @@ return (() => {
       probabilities: workerResult.probabilities,
       bucketVisits: workerResult.bucketVisits,
       iterations: workerResult.iterations,
-      normalizedRegret: workerResult.normalizedRegret
+      normalizedRegret: workerResult.normalizedRegret,
+      turnBettingSolved: workerResult.turnBettingSolved,
+      riverBettingSolved: workerResult.riverBettingSolved
     }
   };
 })()

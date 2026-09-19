@@ -8380,12 +8380,11 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
     let finalType = originalType;
     let reason = "no-change";
 
-    // Raw MC can improve defensive accuracy, but it is not allowed to invent
-    // new aggression. A fold may become a call; a loose call may become a fold.
-    if (originalType === "fold" && rawMonteCarloEquity >= callFloor) {
-        finalType = "call";
-        reason = "raw-mc-rescues-fold";
-    } else if (originalType === "call" && rawMonteCarloEquity < foldFloor) {
+    // v38B robust guard: raw MC is a one-way safety valve.
+    // It may veto a clearly negative call/value raise, but it may NOT turn a
+    // blueprint fold into a call. This keeps the calibrated v37 blueprint as
+    // the default policy and prevents noisy equity estimates from over-defending.
+    if (originalType === "call" && rawMonteCarloEquity < foldFloor) {
         finalType = "fold";
         reason = "raw-mc-rejects-negative-call";
     } else if (originalType === "raise") {
@@ -8411,7 +8410,7 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
         ...plan,
         type: finalType,
         defensiveMcOverlay: {
-            version: "v38-defensive-range-mc",
+            version: "v38B-defensive-range-mc-guard",
             originalType,
             finalType,
             purpose,
@@ -8424,7 +8423,8 @@ function applyRangeMcDefensiveOverlay(index, plan, rawMonteCarloEquity, toCall) 
             multiway,
             severePressure,
             reason,
-            aggressionCanOnlyDecrease: true
+            aggressionCanOnlyDecrease: true,
+            foldCanNeverUpgradeToCall: true
         }
     };
 }

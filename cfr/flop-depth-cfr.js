@@ -307,9 +307,12 @@ class FlopDepthLimitedCFR {
       this.stackBB - ownContribution
     );
 
+    const requested = currentPot * fraction;
+    const legalNonAllIn = Math.max(1, requested);
+
     return Math.min(
       remaining,
-      currentPot * fraction
+      legalNonAllIn
     );
   }
 
@@ -805,6 +808,10 @@ class FlopDepthLimitedCFR {
       publicNodes: Object.keys(FLOP_TREE),
       rootNode: this.rootNode,
       initialState: { ...this.initialState },
+      sizingModel: {
+        betFractions: [0.33, 0.75],
+        minNonAllInBetBB: 1
+      },
       leafModel: {
         allIn: "sampled-turn-river-showdown",
         nonAllIn:

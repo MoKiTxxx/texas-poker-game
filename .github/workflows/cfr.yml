@@ -1,0 +1,29 @@
+name: CFR solver validation
+
+on:
+  push:
+    branches:
+      - feature/cfr-blueprint
+    paths:
+      - cfr/**
+      - .github/workflows/cfr.yml
+  pull_request:
+    branches:
+      - feature/range-aware-monte-carlo-equity
+    paths:
+      - cfr/**
+      - .github/workflows/cfr.yml
+
+jobs:
+  cfr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run CFR+ regression tests
+        run: node cfr/kuhn-cfr.test.js
+      - name: Run 100k convergence benchmark
+        run: node cfr/kuhn-cfr.js 100000

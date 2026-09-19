@@ -51,6 +51,7 @@ return (async()=>{
   const PAIR_COUNT=${PAIRS};
   const SEED=${BASE_SEED};
   const START=${START_CHIPS};
+  const BB=${BIG_BLIND};
 
   function makeRng(seed){
     let s=seed>>>0;
@@ -213,8 +214,8 @@ return (async()=>{
     visibleBoardCount=0;
     street="preflop";
     currentBet=0;
-    minRaise=BIG_BLIND;
-    lastFullRaiseTo=BIG_BLIND;
+    minRaise=BB;
+    lastFullRaiseTo=BB;
     handInProgress=false;
     waitingForHuman=false;
     handEndPhase="none";
@@ -233,7 +234,7 @@ return (async()=>{
       throw new Error("Chip conservation failed: "+newProfit+" + "+oldProfit);
     }
 
-    return newProfit/BIG_BLIND;
+    return newProfit/BB;
   }
 
   const paired=[];

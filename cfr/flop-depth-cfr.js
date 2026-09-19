@@ -205,6 +205,26 @@ class FlopDepthLimitedCFR {
       this.ipRange
     );
 
+    this.rootNode = options.rootNode || "OOP_ROOT";
+    if (!FLOP_TREE[this.rootNode]) {
+      throw new Error("unknown flop CFR root node: " + this.rootNode);
+    }
+
+    const initialState = options.initialState || {};
+    this.initialState = {
+      oopContribution: Number(initialState.oopContribution || 0),
+      ipContribution: Number(initialState.ipContribution || 0)
+    };
+
+    if (
+      this.initialState.oopContribution < 0 ||
+      this.initialState.ipContribution < 0 ||
+      this.initialState.oopContribution > this.stackBB ||
+      this.initialState.ipContribution > this.stackBB
+    ) {
+      throw new Error("invalid initial flop contribution state");
+    }
+
     this.rng = new SeededRng(options.seed ?? 1);
     this.iterations = 0;
 
@@ -670,13 +690,10 @@ class FlopDepthLimitedCFR {
 
     for (let local = 1; local <= iterations; local++) {
       const sample = this._sampleDealAndRunout();
-      const rootState = {
-        oopContribution: 0,
-        ipContribution: 0
-      };
+      const rootState = cloneState(this.initialState);
 
       this._cfr(
-        "OOP_ROOT",
+        this.rootNode,
         rootState,
         sample,
         1,
@@ -685,7 +702,7 @@ class FlopDepthLimitedCFR {
       );
 
       this._cfr(
-        "OOP_ROOT",
+        this.rootNode,
         rootState,
         sample,
         1,
@@ -696,7 +713,7 @@ class FlopDepthLimitedCFR {
       const weight = this.iterations + local;
 
       this._accumulate(
-        "OOP_ROOT",
+        this.rootNode,
         rootState,
         sample,
         1,
@@ -737,21 +754,45 @@ class FlopDepthLimitedCFR {
     );
   }
 
-  rootBucketStrategy(
+  nodeBucketStrategy(
+    nodeId,
     bucket,
     profile = this.averageProfile()
   ) {
-    const family = this.families.get("OOP_ROOT");
-    const offset = family.offset(bucket);
+    const family = this.families.get(nodeId);
+    if (!family) {
+      throw new Error("unknown flop CFR node: " + nodeId);
+    }
 
+    if (
+      !Number.isInteger(bucket) ||
+      bucket < 0 ||
+      bucket >= BUCKET_NAMES.length
+    ) {
+      throw new Error("invalid flop bucket: " + bucket);
+    }
+
+    const offset = family.offset(bucket);
+    const strategy = profile[nodeId];
     const out = {};
 
     for (let a = 0; a < family.actionCount; a++) {
       out[family.actions[a]] =
-        profile.OOP_ROOT[offset + a];
+        strategy[offset + a];
     }
 
     return out;
+  }
+
+  rootBucketStrategy(
+    bucket,
+    profile = this.averageProfile()
+  ) {
+    return this.nodeBucketStrategy(
+      this.rootNode,
+      bucket,
+      profile
+    );
   }
 
   metadata() {
@@ -762,6 +803,8 @@ class FlopDepthLimitedCFR {
       effectiveStackBB: this.stackBB,
       bucketNames: BUCKET_NAMES.slice(),
       publicNodes: Object.keys(FLOP_TREE),
+      rootNode: this.rootNode,
+      initialState: { ...this.initialState },
       leafModel: {
         allIn: "sampled-turn-river-showdown",
         nonAllIn:

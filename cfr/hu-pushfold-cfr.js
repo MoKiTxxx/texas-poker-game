@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   buildStartingHandRanking169,
-  buildComboDistribution,
+  buildJointClassDistribution,
   PrecomputedEquityOracle
 } = require("./holdem169");
 
@@ -22,7 +22,14 @@ class HeadsUpPushFoldCFRPlus {
     this.smallBlind = options.smallBlind ?? 0.5;
     this.bigBlind = options.bigBlind ?? 1;
     this.ranking = (options.ranking || buildStartingHandRanking169()).slice();
-    this.typeProb = Float64Array.from(options.typeProb || buildComboDistribution(this.ranking));
+
+    const chance = options.chanceModel || buildJointClassDistribution(this.ranking);
+    this.jointProb = chance.joint;
+    this.marginalSB = chance.marginalSB;
+    this.marginalBB = chance.marginalBB;
+    this.bbGivenSB = chance.bbGivenSB;
+    this.sbGivenBB = chance.sbGivenBB;
+    this.totalOrderedDeals = chance.totalOrderedDeals;
 
     const oracle = options.equityOracle || new PrecomputedEquityOracle();
     this.equityMatrix = options.equityMatrix || oracle.matrix();
@@ -66,18 +73,18 @@ class HeadsUpPushFoldCFRPlus {
   }
 
   _updateSmallBlind() {
-    const callWeight = new Float64Array(this.n);
-    for (let j = 0; j < this.n; j++) {
-      callWeight[j] = this.typeProb[j] * this.strategyBB[2 * j + 1];
-    }
-
     for (let i = 0; i < this.n; i++) {
-      let shoveValue = this.bigBlind;
-
+      let shoveValue = 0;
       const row = i * this.n;
+
       for (let j = 0; j < this.n; j++) {
+        const conditional = this.bbGivenSB[row + j];
+        const callProb = this.strategyBB[2 * j + 1];
         const calledValue = this.showdownValue[row + j];
-        shoveValue += callWeight[j] * (calledValue - this.bigBlind);
+        shoveValue += conditional * (
+          (1 - callProb) * this.bigBlind +
+          callProb * calledValue
+        );
       }
 
       const foldValue = -this.smallBlind;
@@ -91,22 +98,17 @@ class HeadsUpPushFoldCFRPlus {
   }
 
   _updateBigBlind() {
-    const shoveWeight = new Float64Array(this.n);
-    let shoveMass = 0;
-
-    for (let i = 0; i < this.n; i++) {
-      const weight = this.typeProb[i] * this.strategySB[2 * i + 1];
-      shoveWeight[i] = weight;
-      shoveMass += weight;
-    }
-
     for (let j = 0; j < this.n; j++) {
-      // Values are for the BB player. If BB folds to a shove, SB wins +1 BB.
-      const foldValue = -shoveMass;
+      let foldValue = 0;
       let callValue = 0;
+      const row = j * this.n;
 
       for (let i = 0; i < this.n; i++) {
-        callValue += shoveWeight[i] * (-this.showdownValue[i * this.n + j]);
+        const counterfactualWeight =
+          this.sbGivenBB[row + i] * this.strategySB[2 * i + 1];
+
+        foldValue += counterfactualWeight * (-this.bigBlind);
+        callValue += counterfactualWeight * (-this.showdownValue[i * this.n + j]);
       }
 
       const foldProb = this.strategyBB[2 * j];
@@ -175,16 +177,21 @@ class HeadsUpPushFoldCFRPlus {
     let value = 0;
 
     for (let i = 0; i < this.n; i++) {
-      let shoveValue = this.bigBlind;
+      let shoveValue = 0;
+      const row = i * this.n;
+
       for (let j = 0; j < this.n; j++) {
+        const conditional = this.bbGivenSB[row + j];
         const callProb = profile.bb[2 * j + 1];
-        shoveValue += this.typeProb[j] * callProb *
-          (this.showdownValue[i * this.n + j] - this.bigBlind);
+        shoveValue += conditional * (
+          (1 - callProb) * this.bigBlind +
+          callProb * this.showdownValue[row + j]
+        );
       }
 
       const shoveProb = profile.sb[2 * i + 1];
       const handValue = (1 - shoveProb) * (-this.smallBlind) + shoveProb * shoveValue;
-      value += this.typeProb[i] * handValue;
+      value += this.marginalSB[i] * handValue;
     }
 
     return value;
@@ -194,13 +201,19 @@ class HeadsUpPushFoldCFRPlus {
     let value = 0;
 
     for (let i = 0; i < this.n; i++) {
-      let shoveValue = this.bigBlind;
+      let shoveValue = 0;
+      const row = i * this.n;
+
       for (let j = 0; j < this.n; j++) {
+        const conditional = this.bbGivenSB[row + j];
         const callProb = profile.bb[2 * j + 1];
-        shoveValue += this.typeProb[j] * callProb *
-          (this.showdownValue[i * this.n + j] - this.bigBlind);
+        shoveValue += conditional * (
+          (1 - callProb) * this.bigBlind +
+          callProb * this.showdownValue[row + j]
+        );
       }
-      value += this.typeProb[i] * Math.max(-this.smallBlind, shoveValue);
+
+      value += this.marginalSB[i] * Math.max(-this.smallBlind, shoveValue);
     }
 
     return value;
@@ -208,27 +221,29 @@ class HeadsUpPushFoldCFRPlus {
 
   _bestResponseBigBlind(profile) {
     let foldContribution = 0;
-    let shoveMass = 0;
-    const shoveWeight = new Float64Array(this.n);
 
     for (let i = 0; i < this.n; i++) {
       const shoveProb = profile.sb[2 * i + 1];
-      foldContribution += this.typeProb[i] * (1 - shoveProb) * (-this.smallBlind);
-      shoveWeight[i] = this.typeProb[i] * shoveProb;
-      shoveMass += shoveWeight[i];
+      foldContribution +=
+        this.marginalSB[i] * (1 - shoveProb) * (-this.smallBlind);
     }
 
     let responseContribution = 0;
 
     for (let j = 0; j < this.n; j++) {
-      const p0IfBbFolds = shoveMass;
+      let p0IfBbFolds = 0;
       let p0IfBbCalls = 0;
+      const row = j * this.n;
 
       for (let i = 0; i < this.n; i++) {
-        p0IfBbCalls += shoveWeight[i] * this.showdownValue[i * this.n + j];
+        const conditional = this.sbGivenBB[row + i];
+        const shoveProb = profile.sb[2 * i + 1];
+        p0IfBbFolds += conditional * shoveProb * this.bigBlind;
+        p0IfBbCalls += conditional * shoveProb * this.showdownValue[i * this.n + j];
       }
 
-      responseContribution += this.typeProb[j] * Math.min(p0IfBbFolds, p0IfBbCalls);
+      responseContribution +=
+        this.marginalBB[j] * Math.min(p0IfBbFolds, p0IfBbCalls);
     }
 
     return foldContribution + responseContribution;
@@ -246,15 +261,16 @@ class HeadsUpPushFoldCFRPlus {
       bestResponseBB,
       nashConv,
       exploitability: nashConv / 2,
-      weightedShoveFrequency: this.weightedFrequency(profile.sb, 1),
-      weightedCallFrequency: this.weightedFrequency(profile.bb, 1)
+      weightedShoveFrequency: this.weightedFrequency(profile.sb, 1, "sb"),
+      weightedCallFrequency: this.weightedFrequency(profile.bb, 1, "bb")
     };
   }
 
-  weightedFrequency(strategy, actionIndex) {
+  weightedFrequency(strategy, actionIndex, position = "sb") {
+    const marginal = position === "bb" ? this.marginalBB : this.marginalSB;
     let total = 0;
     for (let i = 0; i < this.n; i++) {
-      total += this.typeProb[i] * strategy[2 * i + actionIndex];
+      total += marginal[i] * strategy[2 * i + actionIndex];
     }
     return total;
   }
@@ -283,8 +299,9 @@ class HeadsUpPushFoldCFRPlus {
         smallBlindBB: this.smallBlind,
         bigBlindBB: this.bigBlind,
         handClasses: this.n,
-        chanceModel: "independent-combo-weighted-169-class",
-        equityOracle: "poker-yoga-preflop-equity-1m-seed1"
+        chanceModel: "exact-blocker-weighted-1326-combos",
+        equityOracle: "poker-yoga-preflop-equity-1m-seed1",
+        totalOrderedPrivateDeals: this.totalOrderedDeals
       },
       iterations: this.iterations,
       metrics: this.metrics(profile),

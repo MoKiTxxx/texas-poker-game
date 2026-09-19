@@ -4142,6 +4142,365 @@ function getHuCfrVoluntaryPreflopActions() {
     );
 }
 
+function getHuMidstackCfrMix(index) {
+    const p = players[index];
+    if (!p) return 0;
+
+    if (Number.isFinite(p.huMidstackCfrMix)) {
+        return Math.max(0, Math.min(1, p.huMidstackCfrMix));
+    }
+
+    if (p.useHuMidstackCfr === true || ENABLE_HU_MIDSTACK_CFR) {
+        return HU_MIDSTACK_CFR_DEFAULT_MIX;
+    }
+
+    return 0;
+}
+
+function getHuMidstackStackInterpolation(effectiveBB) {
+    if (!Number.isFinite(effectiveBB)) return null;
+    if (effectiveBB < 11.5 || effectiveBB > 20.5) return null;
+
+    if (effectiveBB <= HU_MIDSTACK_CFR_STACKS[0]) {
+        return { low: 12, high: 12, t: 0 };
+    }
+
+    const max = HU_MIDSTACK_CFR_STACKS[HU_MIDSTACK_CFR_STACKS.length - 1];
+    if (effectiveBB >= max) {
+        return { low: max, high: max, t: 0 };
+    }
+
+    for (let i = 0; i < HU_MIDSTACK_CFR_STACKS.length - 1; i++) {
+        const low = HU_MIDSTACK_CFR_STACKS[i];
+        const high = HU_MIDSTACK_CFR_STACKS[i + 1];
+
+        if (effectiveBB >= low && effectiveBB <= high) {
+            return {
+                low,
+                high,
+                t: (effectiveBB - low) / Math.max(1e-9, high - low)
+            };
+        }
+    }
+
+    return null;
+}
+
+function getHuMidstackStrategy(nodeId, notation, effectiveBB) {
+    const bracket = getHuMidstackStackInterpolation(effectiveBB);
+    if (!bracket) return null;
+
+    const actions = HU_MIDSTACK_CFR_NODE_ACTIONS[nodeId];
+    if (!actions) return null;
+
+    const lowNode = HU_MIDSTACK_CFR_BLUEPRINTS[String(bracket.low)]?.[nodeId];
+    const highNode = HU_MIDSTACK_CFR_BLUEPRINTS[String(bracket.high)]?.[nodeId];
+    if (!lowNode || !highNode) return null;
+
+    const low = lowNode[notation];
+    const high = highNode[notation];
+    if (!Array.isArray(low) || !Array.isArray(high)) return null;
+
+    const probabilities = actions.map((_, i) => {
+        const a = Number(low[i] || 0);
+        const b = Number(high[i] || 0);
+        return Math.max(0, a + (b - a) * bracket.t);
+    });
+
+    const total = probabilities.reduce((sum, x) => sum + x, 0);
+    if (total <= 1e-12) return null;
+
+    for (let i = 0; i < probabilities.length; i++) {
+        probabilities[i] /= total;
+    }
+
+    return {
+        nodeId,
+        actions,
+        probabilities,
+        bracket
+    };
+}
+
+function sampleHuMidstackAction(strategy) {
+    let r = Math.random();
+
+    for (let i = 0; i < strategy.actions.length; i++) {
+        r -= strategy.probabilities[i];
+        if (r <= 0) {
+            return {
+                action: strategy.actions[i],
+                probability: strategy.probabilities[i],
+                actionIndex: i
+            };
+        }
+    }
+
+    const last = strategy.actions.length - 1;
+    return {
+        action: strategy.actions[last],
+        probability: strategy.probabilities[last],
+        actionIndex: last
+    };
+}
+
+function huMidstackRaiseNear(action, multiple, tolerance = 0.12) {
+    if (!action || action.action !== "raise" || action.isAllIn) return false;
+    const target = Number(action.raiseTo);
+    if (!Number.isFinite(target)) return false;
+    return Math.abs(target / Math.max(1, bigBlind) - multiple) <= tolerance;
+}
+
+function classifyHuMidstackCfrNode(index) {
+    const strategic = getHuCfrStrategicPlayers();
+    if (strategic.length !== 2) return null;
+
+    const sbIndex = dealerIndex;
+    const bbIndex = strategic.find(x => x.i !== sbIndex)?.i ?? -1;
+    if (bbIndex < 0) return null;
+
+    const voluntary = getHuCfrVoluntaryPreflopActions();
+
+    if (index === sbIndex && voluntary.length === 0) {
+        return "ROOT";
+    }
+
+    if (index === bbIndex && voluntary.length === 1) {
+        const a0 = voluntary[0];
+        if (a0.playerIndex !== sbIndex) return null;
+
+        if (a0.action === "call" && !a0.isAllIn) {
+            return "BB_LIMP";
+        }
+
+        if (a0.action === "raise" && a0.isAllIn) {
+            return "BB_VS_SHOVE";
+        }
+
+        if (huMidstackRaiseNear(a0, 2)) {
+            return "BB_MINRAISE";
+        }
+
+        return null;
+    }
+
+    if (index === sbIndex && voluntary.length === 2) {
+        const [a0, a1] = voluntary;
+        if (a0.playerIndex !== sbIndex || a1.playerIndex !== bbIndex) return null;
+
+        if (a0.action === "call" && !a0.isAllIn && a1.action === "raise") {
+            if (a1.isAllIn) return "SB_VS_LIMP_SHOVE";
+            if (huMidstackRaiseNear(a1, 3)) return "SB_VS_LIMP_RAISE3";
+            return null;
+        }
+
+        if (huMidstackRaiseNear(a0, 2) && a1.action === "raise") {
+            if (a1.isAllIn) return "SB_VS_MINRAISE_SHOVE";
+            if (huMidstackRaiseNear(a1, 6)) return "SB_VS_3BET6";
+            return null;
+        }
+
+        return null;
+    }
+
+    if (index === bbIndex && voluntary.length === 3) {
+        const [a0, a1, a2] = voluntary;
+
+        if (
+            a0.playerIndex === sbIndex &&
+            a1.playerIndex === bbIndex &&
+            a2.playerIndex === sbIndex &&
+            a2.action === "raise" &&
+            a2.isAllIn
+        ) {
+            if (
+                a0.action === "call" &&
+                !a0.isAllIn &&
+                huMidstackRaiseNear(a1, 3)
+            ) {
+                return "BB_VS_LIMP_RESHOVE";
+            }
+
+            if (
+                huMidstackRaiseNear(a0, 2) &&
+                huMidstackRaiseNear(a1, 6)
+            ) {
+                return "BB_VS_3BET_RESHOVE";
+            }
+        }
+    }
+
+    return null;
+}
+
+function executeHuMidstackCfrAction(index, nodeId, action) {
+    const p = players[index];
+    const bb = Math.max(1, bigBlind);
+
+    if (nodeId === "ROOT") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "limp") callPlayer(index);
+        else if (action === "minraise") raisePlayer(index, bb * 2);
+        else if (action === "shove") shovePlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "BB_LIMP") {
+        if (action === "check") callPlayer(index);
+        else if (action === "raise3") raisePlayer(index, bb * 3);
+        else if (action === "shove") shovePlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "SB_VS_LIMP_RAISE3") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else if (action === "reshove") shovePlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "BB_VS_LIMP_RESHOVE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "SB_VS_LIMP_SHOVE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "BB_MINRAISE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else if (action === "threebet6") raisePlayer(index, bb * 6);
+        else if (action === "shove") shovePlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "SB_VS_3BET6") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else if (action === "reshove") shovePlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "BB_VS_3BET_RESHOVE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "SB_VS_MINRAISE_SHOVE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else return false;
+        return true;
+    }
+
+    if (nodeId === "BB_VS_SHOVE") {
+        if (action === "fold") foldPlayer(index);
+        else if (action === "call") callPlayer(index);
+        else return false;
+        return true;
+    }
+
+    return false;
+}
+
+function tryExecuteHuMidstackCfr(index, notation, toCall) {
+    const mix = getHuMidstackCfrMix(index);
+    if (mix <= 0) {
+        return { handled: false, reason: "hu-midstack-cfr-disabled" };
+    }
+
+    const strategic = getHuCfrStrategicPlayers();
+    if (strategic.length !== 2) {
+        return { handled: false, reason: "hu-midstack-cfr-not-heads-up" };
+    }
+
+    const effectiveBB = getHuCfrEffectiveStackBB(index);
+    const bracket = getHuMidstackStackInterpolation(effectiveBB);
+    if (!bracket) {
+        return {
+            handled: false,
+            reason: "hu-midstack-cfr-outside-stack-grid",
+            effectiveBB
+        };
+    }
+
+    const nodeId = classifyHuMidstackCfrNode(index);
+    if (!nodeId) {
+        return {
+            handled: false,
+            reason: "hu-midstack-cfr-history-not-covered",
+            effectiveBB
+        };
+    }
+
+    if (Math.random() >= mix) {
+        return {
+            handled: false,
+            reason: "hu-midstack-cfr-mixture-fallback",
+            effectiveBB,
+            nodeId,
+            mix
+        };
+    }
+
+    const strategy = getHuMidstackStrategy(nodeId, notation, effectiveBB);
+    if (!strategy) {
+        return {
+            handled: false,
+            reason: "hu-midstack-cfr-no-lookup",
+            effectiveBB,
+            nodeId
+        };
+    }
+
+    const sampled = sampleHuMidstackAction(strategy);
+
+    annotatePreflopDecisionDebug(index, {
+        huMidstackCfrVersion: "v1-continuation-approx",
+        huMidstackCfrNode: nodeId,
+        huMidstackCfrEffectiveBB: Number(effectiveBB.toFixed(2)),
+        huMidstackCfrStackLow: strategy.bracket.low,
+        huMidstackCfrStackHigh: strategy.bracket.high,
+        huMidstackCfrInterpolation: Number(strategy.bracket.t.toFixed(3)),
+        huMidstackCfrMix: mix,
+        huMidstackCfrAction: sampled.action,
+        huMidstackCfrActionProbability: Number(sampled.probability.toFixed(4)),
+        huMidstackCfrExactPostflop: false
+    });
+
+    const executed = executeHuMidstackCfrAction(
+        index,
+        nodeId,
+        sampled.action
+    );
+
+    return {
+        handled: executed,
+        reason: executed
+            ? "hu-midstack-cfr-" + nodeId.toLowerCase()
+            : "hu-midstack-cfr-action-failed",
+        effectiveBB,
+        nodeId,
+        action: sampled.action,
+        probability: sampled.probability
+    };
+}
+
+
 function tryExecuteHuPushFoldCfr(index, notation, toCall) {
     const mix = getHuCfrMix(index);
     if (mix <= 0) {
@@ -4155,9 +4514,9 @@ function tryExecuteHuPushFoldCfr(index, notation, toCall) {
 
     const effectiveBB = getHuCfrEffectiveStackBB(index);
 
-    // The trained grid starts at 5BB. Below 4.5BB the existing emergency
-    // push/fold logic remains in charge; above 15.5BB this abstraction is too coarse.
-    if (effectiveBB < 4.5 || effectiveBB > 15.5) {
+    // The validated push/fold live region is intentionally limited to 5–10BB.
+    // 12–20BB is handled by the separate limp/min-raise/shove midstack tree.
+    if (effectiveBB < 4.5 || effectiveBB > 10.5) {
         return { handled: false, reason: "hu-cfr-outside-stack-grid", effectiveBB };
     }
 
@@ -4414,6 +4773,19 @@ function executePreflopAction(index) {
             : undefined
     });
     if (huCfrDecision.handled) {
+        return;
+    }
+
+    const huMidstackDecision = tryExecuteHuMidstackCfr(index, notation, toCall);
+    annotatePreflopDecisionDebug(index, {
+        huMidstackCfrAttempt: huMidstackDecision.reason || "none",
+        huMidstackCfrHandled: !!huMidstackDecision.handled,
+        huMidstackCfrNode: huMidstackDecision.nodeId || undefined,
+        huMidstackCfrEffectiveBB: Number.isFinite(huMidstackDecision.effectiveBB)
+            ? Number(huMidstackDecision.effectiveBB.toFixed(2))
+            : undefined
+    });
+    if (huMidstackDecision.handled) {
         return;
     }
 

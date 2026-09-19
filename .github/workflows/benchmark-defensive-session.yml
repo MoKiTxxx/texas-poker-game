@@ -1,0 +1,32 @@
+name: Defensive Range-MC Session Benchmark
+
+on:
+  pull_request:
+    branches:
+      - feature/defensive-range-mc
+    paths:
+      - benchmark-defensive-session.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/benchmark-defensive-session.yml
+
+jobs:
+  session:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        seed: [24680, 13579, 42424, 51515, 62626, 73737, 84848, 95959, 12345, 67890]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run long-session A/B benchmark
+        env:
+          BENCH_ALPHA: "0.25"
+          BENCH_SEED: ${{ matrix.seed }}
+          BENCH_HANDS: "500"
+          BENCH_TRIALS: "60"
+        run: node benchmark-defensive-session.js

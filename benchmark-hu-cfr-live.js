@@ -124,12 +124,12 @@ return (async()=>{
     if(p&&p.benchmarkPolicy==="new"){
       if(result&&result.handled){
         cfrUsage.handled++;
-        const dbg=pendingPreflopDecisionDebug[index]||{};
-        if(dbg.huCfrRole==="SB")cfrUsage.sb++;
-        if(dbg.huCfrRole==="BB")cfrUsage.bb++;
-        if(dbg.huCfrAction==="shove")cfrUsage.shove++;
-        else if(dbg.huCfrAction==="call")cfrUsage.call++;
-        else if(dbg.huCfrAction==="fold")cfrUsage.fold++;
+        if(result.reason==="hu-cfr-sb-pushfold")cfrUsage.sb++;
+        if(result.reason==="hu-cfr-bb-callfold")cfrUsage.bb++;
+        const last=String(p.lastAction||"");
+        if(last.includes("All-in"))cfrUsage.shove++;
+        else if(last.includes("跟注"))cfrUsage.call++;
+        else if(last.includes("棄牌"))cfrUsage.fold++;
       }else{
         cfrUsage.fallback++;
       }

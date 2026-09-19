@@ -63,18 +63,25 @@ This is **not** a full turn/river solver.
 For each sampled CFR iteration, turn and river are sampled once and the
 same runout is used across all action alternatives in that traversal.
 
-- all-in leaves: sampled turn/river showdown utility;
-- non-all-in call/check leaves: sampled turn/river **checkdown** utility.
+- all-in flop leaves: sampled turn/river showdown utility;
+- non-all-in flop leaves: enter a simplified **turn betting round**;
+- turn OOP/IP actions: check / 50% pot / jam;
+- facing a 50% turn bet: fold / call / jam;
+- facing a turn jam: fold / call;
+- non-all-in turn leaves: sampled river checkdown utility.
 
 Therefore:
 
 ```
+turnBettingSolved = true
+riverBettingSolved = false
 futureBettingSolved = false
 ```
 
-The checkdown leaf is intentionally simple and testable. A later
-milestone can replace it with a learned counterfactual value function or
-a deeper turn resolver without rewriting the flop CFR tree.
+This is still depth-limited: river betting is not solved. The first
+flop-only checkdown version failed to beat v37 in a 6,000-hand holdout,
+so the extra turn betting round was added specifically to improve the
+continuation value seen by flop actions.
 
 ## Validation targets
 
@@ -110,9 +117,12 @@ Current guardrails:
 
 Live ranges are built from the existing public range model for **both** seats. The worker receives notation weights, not the opponent's real hole cards. The acting player's actual cards are sent only to identify that player's own flop information bucket.
 
+The live worker now runs the same flop+turn depth resolver as the Node
+research implementation.
+
 The live worker returns:
 
-- current public node;
+- current public flop node;
 - acting player's own bucket;
 - mixed strategy;
 - sampled bucket visits;

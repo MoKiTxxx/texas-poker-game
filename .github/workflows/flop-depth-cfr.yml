@@ -1,0 +1,41 @@
+name: HU flop depth CFR validation
+
+concurrency:
+  group: flop-depth-cfr-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - feature/flop-depth-cfr
+    paths:
+      - cfr/holdem-postflop.js
+      - cfr/flop-depth-cfr.js
+      - cfr/flop-depth-cfr.test.js
+      - cfr/HU_FLOP_DEPTH.md
+      - test-flop-cfr-live-adapter.js
+      - zhang_family_texas_holdem_formal_v3_shuffle_below_cards.html
+      - .github/workflows/flop-depth-cfr.yml
+  pull_request:
+    branches:
+      - feature/hu-midstack-cfr
+    paths:
+      - cfr/**
+      - .github/workflows/flop-depth-cfr.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Smoke-load validated preflop CFR modules
+        run: |
+          node -e "require('./cfr/hu-pushfold-cfr'); require('./cfr/hu-midstack-cfr');"
+      - name: Validate flop depth-limited CFR
+        run: node cfr/flop-depth-cfr.test.js
+      - name: Validate live flop worker adapter
+        run: node test-flop-cfr-live-adapter.js

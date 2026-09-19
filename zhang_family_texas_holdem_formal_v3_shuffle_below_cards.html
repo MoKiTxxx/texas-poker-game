@@ -950,6 +950,10 @@
 <script>
 const FORMAL_RELEASE = true;
 const RANGE_MC_STRATEGY_ALPHA = 0.25;
+const ENABLE_FLOP_DEPTH_CFR = true;
+const FLOP_DEPTH_CFR_DEFAULT_MIX = 1.0;
+const FLOP_DEPTH_CFR_MAX_EFFECTIVE_STACK_BB = 25;
+const FLOP_DEPTH_CFR_MIN_BUCKET_VISITS = 8;
 const ENABLE_HU_PUSHFOLD_CFR = false;
 const HU_PUSHFOLD_CFR_DEFAULT_MIX = 1.0;
 const HU_PUSHFOLD_CFR_STACKS = [5, 8, 10, 12, 15];
@@ -1972,6 +1976,27 @@ function renderDebugPanel() {
     html += "<div><b>街道：</b>" + info.street + "｜<b>Strategy Equity：</b>" + formatPercent(info.equity) + rawEquityText + alphaText + "｜<b>來源：</b>" + equitySourceText + "｜<b>需跟注：</b>" + money(info.toCall) + "</div>";
     html += "<div><b>動作：</b>" + info.planType + "｜<b>目的：</b>" + (info.purpose || "-") + "｜<b>尺度：</b>" + (info.tier || "-") + "</div>";
     html += "<div><b>SPR：</b>" + (info.spr ?? "-") + "｜<b>對手數：</b>" + (info.opponents ?? "-") + "｜<b>下注額：</b>" + (info.amount !== null && info.amount !== undefined ? money(info.amount) : "-") + "</div>";
+
+    if (info.flopCfr) {
+        const fc = info.flopCfr;
+        const strategyText = (fc.actions || []).map((action, i) => {
+            const p = Array.isArray(fc.probabilities) ? fc.probabilities[i] : null;
+            return action + " " + formatPercent(p);
+        }).join(" / ");
+
+        html += "<div class='debugBlock'><b>Flop Depth CFR：</b>" +
+            (fc.nodeId || "-") + "｜bucket " +
+            (fc.heroBucketName || fc.heroBucket || "-") + "</div>";
+        html += "<div class='debugMono'>" +
+            strategyText +
+            "｜chosen " + (info.planType || "-") +
+            "｜visits " + (fc.bucketVisits ?? "-") +
+            "｜iterations " + (fc.iterations ?? "-") +
+            "｜regret " + (Number.isFinite(fc.normalizedRegret) ? fc.normalizedRegret.toExponential(2) : "-") +
+            "｜worker " + (fc.solverElapsedMs ?? "-") + "ms" +
+            "｜futureBettingSolved=" + (fc.futureBettingSolved ? "yes" : "no") +
+            "</div>";
+    }
 
     if (info.texture) {
         html += "<div class='debugBlock'><b>Board Texture：</b>" + info.texture.wetness + "，score " + info.texture.score + "</div>";
@@ -6138,6 +6163,49 @@ function performGTODecision(index) {
                 opponentRanges: getSafeOpponentRangeDebug(actingIndex)
             };
 
+            if (street === "flop") {
+                const flopCfrResult = await requestFlopDepthCfrDecision(
+                    actingIndex,
+                    {
+                        timeLimitMs: autoPlayMode ? 80 : 180,
+                        minIterations: 600,
+                        maxIterations: 600,
+                        timeoutMs: autoPlayMode ? 750 : 950
+                    }
+                );
+
+                if (!isPendingAiAction(actingIndex, actionToken)) return;
+
+                pendingAiDebugInfo[actingIndex] = {
+                    ...(pendingAiDebugInfo[actingIndex] || {}),
+                    flopCfrAttempt: flopCfrResult.reason || "none",
+                    flopCfrNode: flopCfrResult.nodeId || null,
+                    flopCfrIterations: flopCfrResult.iterations || 0,
+                    flopCfrBucketVisits: flopCfrResult.bucketVisits || 0
+                };
+
+                if (flopCfrResult.handled) {
+                    const executed = executeFlopDepthCfrAction(
+                        actingIndex,
+                        flopCfrResult.action
+                    );
+
+                    if (executed) {
+                        recordFlopCfrDecisionDebug(
+                            actingIndex,
+                            flopCfrResult
+                        );
+                        finishAiTurn(actingIndex);
+                        return;
+                    }
+
+                    pendingAiDebugInfo[actingIndex] = {
+                        ...(pendingAiDebugInfo[actingIndex] || {}),
+                        flopCfrAttempt: "flop-cfr-action-execution-failed"
+                    };
+                }
+            }
+
             const equityResult = await estimateRangeAwarePostflopEquity(actingIndex, {
                 timeLimitMs: autoPlayMode ? 55 : 180,
                 timeoutMs: autoPlayMode ? 450 : 800
@@ -9078,6 +9146,1502 @@ function updateAiDebugInfo(index, equity, toCall, plan, texture, hero) {
     delete pendingAiDebugInfo[index];
     renderDebugPanel();
 }
+
+
+function flopCfrWorkerBootstrap() {
+    "use strict";
+
+    const BUCKET_NAMES = [
+        "air", "overcards", "gutshot", "openEnded",
+        "flushDraw", "comboDraw", "weakPair", "topPair",
+        "overPair", "twoPair", "trips", "straightPlus"
+    ];
+
+    const FLOP_TREE = {
+        OOP_ROOT: { player: 0, actions: ["check", "bet33", "bet75", "jam"] },
+        IP_AFTER_CHECK: { player: 1, actions: ["check", "bet33", "bet75", "jam"] },
+        IP_VS_OOP_B33: { player: 1, actions: ["fold", "call", "jam"] },
+        IP_VS_OOP_B75: { player: 1, actions: ["fold", "call", "jam"] },
+        IP_VS_OOP_JAM: { player: 1, actions: ["fold", "call"] },
+        OOP_VS_IP_B33: { player: 0, actions: ["fold", "call", "jam"] },
+        OOP_VS_IP_B75: { player: 0, actions: ["fold", "call", "jam"] },
+        OOP_VS_IP_JAM: { player: 0, actions: ["fold", "call"] },
+        OOP_VS_IP_JAM_AFTER_B33: { player: 0, actions: ["fold", "call"] },
+        OOP_VS_IP_JAM_AFTER_B75: { player: 0, actions: ["fold", "call"] },
+        IP_VS_OOP_JAM_AFTER_B33: { player: 1, actions: ["fold", "call"] },
+        IP_VS_OOP_JAM_AFTER_B75: { player: 1, actions: ["fold", "call"] },
+
+        TURN_OOP_ROOT: { player: 0, actions: ["check", "bet50", "jam"] },
+        TURN_IP_AFTER_CHECK: { player: 1, actions: ["check", "bet50", "jam"] },
+        TURN_IP_VS_OOP_B50: { player: 1, actions: ["fold", "call", "jam"] },
+        TURN_OOP_VS_IP_B50: { player: 0, actions: ["fold", "call", "jam"] },
+        TURN_IP_VS_OOP_JAM: { player: 1, actions: ["fold", "call"] },
+        TURN_OOP_VS_IP_JAM: { player: 0, actions: ["fold", "call"] },
+        TURN_OOP_VS_IP_JAM_AFTER_B50: { player: 0, actions: ["fold", "call"] },
+        TURN_IP_VS_OOP_JAM_AFTER_B50: { player: 1, actions: ["fold", "call"] }
+    };
+
+    function cardRank(id) {
+        return Math.floor(id / 4) + 2;
+    }
+
+    function cardSuit(id) {
+        return id % 4;
+    }
+
+    function rankNotation(rank) {
+        if (rank === 14) return "A";
+        if (rank === 13) return "K";
+        if (rank === 12) return "Q";
+        if (rank === 11) return "J";
+        if (rank === 10) return "T";
+        return String(rank);
+    }
+
+    function handNotation(a, b) {
+        const ra = cardRank(a);
+        const rb = cardRank(b);
+        const high = Math.max(ra, rb);
+        const low = Math.min(ra, rb);
+
+        if (high === low) {
+            return rankNotation(high) + rankNotation(low);
+        }
+
+        return rankNotation(high) + rankNotation(low) +
+            (cardSuit(a) === cardSuit(b) ? "s" : "o");
+    }
+
+    function compareHandValues(a, b) {
+        if (a.category !== b.category) {
+            return a.category - b.category;
+        }
+
+        const n = Math.max(a.tiebreak.length, b.tiebreak.length);
+        for (let i = 0; i < n; i++) {
+            const av = a.tiebreak[i] || 0;
+            const bv = b.tiebreak[i] || 0;
+            if (av !== bv) return av - bv;
+        }
+
+        return 0;
+    }
+
+    function straightHighFromRanks(ranks) {
+        const unique = [...new Set(ranks)].sort((a, b) => b - a);
+        if (unique.includes(14)) unique.push(1);
+
+        for (let i = 0; i <= unique.length - 5; i++) {
+            const window = unique.slice(i, i + 5);
+            if (window[0] - window[4] === 4) return window[0];
+        }
+
+        return 0;
+    }
+
+    function evaluateFive(ids) {
+        const ranks = ids.map(cardRank).sort((a, b) => b - a);
+        const suits = ids.map(cardSuit);
+        const counts = {};
+
+        for (const rank of ranks) {
+            counts[rank] = (counts[rank] || 0) + 1;
+        }
+
+        const groups = Object.keys(counts)
+            .map(rank => ({ rank: Number(rank), count: counts[rank] }))
+            .sort((a, b) => {
+                if (b.count !== a.count) return b.count - a.count;
+                return b.rank - a.rank;
+            });
+
+        const flush = suits.every(s => s === suits[0]);
+        const straightHigh = straightHighFromRanks(ranks);
+
+        if (flush && straightHigh) {
+            return { category: 8, tiebreak: [straightHigh] };
+        }
+
+        if (groups[0].count === 4) {
+            return {
+                category: 7,
+                tiebreak: [
+                    groups[0].rank,
+                    groups.find(g => g.count === 1).rank
+                ]
+            };
+        }
+
+        if (groups[0].count === 3 && groups[1] && groups[1].count === 2) {
+            return {
+                category: 6,
+                tiebreak: [groups[0].rank, groups[1].rank]
+            };
+        }
+
+        if (flush) return { category: 5, tiebreak: ranks.slice() };
+        if (straightHigh) return { category: 4, tiebreak: [straightHigh] };
+
+        if (groups[0].count === 3) {
+            const kickers = groups
+                .filter(g => g.count === 1)
+                .map(g => g.rank)
+                .sort((a, b) => b - a);
+
+            return {
+                category: 3,
+                tiebreak: [groups[0].rank].concat(kickers)
+            };
+        }
+
+        const pairs = groups
+            .filter(g => g.count === 2)
+            .map(g => g.rank)
+            .sort((a, b) => b - a);
+
+        if (pairs.length >= 2) {
+            const kicker = groups
+                .filter(g => g.count === 1)
+                .map(g => g.rank)
+                .sort((a, b) => b - a)[0];
+
+            return {
+                category: 2,
+                tiebreak: [pairs[0], pairs[1], kicker]
+            };
+        }
+
+        if (pairs.length === 1) {
+            const kickers = groups
+                .filter(g => g.count === 1)
+                .map(g => g.rank)
+                .sort((a, b) => b - a);
+
+            return {
+                category: 1,
+                tiebreak: [pairs[0]].concat(kickers)
+            };
+        }
+
+        return { category: 0, tiebreak: ranks.slice() };
+    }
+
+    function bestOfSeven(ids) {
+        let best = null;
+
+        for (let a = 0; a < 3; a++) {
+            for (let b = a + 1; b < 4; b++) {
+                for (let cc = b + 1; cc < 5; cc++) {
+                    for (let d = cc + 1; d < 6; d++) {
+                        for (let e = d + 1; e < 7; e++) {
+                            const value = evaluateFive([
+                                ids[a], ids[b], ids[cc], ids[d], ids[e]
+                            ]);
+
+                            if (best === null || compareHandValues(value, best) > 0) {
+                                best = value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return best;
+    }
+
+    function bestOfAtLeastFive(ids) {
+        if (!Array.isArray(ids) || ids.length < 5 || ids.length > 7) {
+            throw new Error("bestOfAtLeastFive expects 5 to 7 cards");
+        }
+
+        if (ids.length === 5) return evaluateFive(ids);
+        if (ids.length === 7) return bestOfSeven(ids);
+
+        let best = null;
+
+        for (let a = 0; a < ids.length - 4; a++) {
+            for (let b = a + 1; b < ids.length - 3; b++) {
+                for (let cc = b + 1; cc < ids.length - 2; cc++) {
+                    for (let d = cc + 1; d < ids.length - 1; d++) {
+                        for (let e = d + 1; e < ids.length; e++) {
+                            const value = evaluateFive([
+                                ids[a], ids[b], ids[cc], ids[d], ids[e]
+                            ]);
+
+                            if (best === null || compareHandValues(value, best) > 0) {
+                                best = value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return best;
+    }
+
+    function showdownShare(holeA, holeB, board5) {
+        const a = bestOfSeven(holeA.concat(board5));
+        const b = bestOfSeven(holeB.concat(board5));
+        const cmp = compareHandValues(a, b);
+        if (cmp > 0) return 1;
+        if (cmp < 0) return 0;
+        return 0.5;
+    }
+
+    function suitCounts(ids) {
+        const counts = [0, 0, 0, 0];
+        for (const id of ids) counts[cardSuit(id)]++;
+        return counts;
+    }
+
+    function straightDrawInfo(ids) {
+        const ranks = new Set(ids.map(cardRank));
+        if (ranks.has(14)) ranks.add(1);
+
+        let oneMissingWindows = 0;
+        for (let low = 1; low <= 10; low++) {
+            const needed = [low, low + 1, low + 2, low + 3, low + 4];
+            const present = needed.filter(r => ranks.has(r));
+            if (present.length === 4) oneMissingWindows++;
+        }
+
+        return {
+            openEnded: oneMissingWindows >= 2,
+            gutshot: oneMissingWindows >= 1 && oneMissingWindows < 2
+        };
+    }
+
+    function postflopBucket(hole, boardCards) {
+        const allCards = hole.concat(boardCards);
+        const made = bestOfAtLeastFive(allCards);
+        const holeRanks = hole.map(cardRank);
+        const boardRanks = boardCards.map(cardRank);
+        const maxBoard = Math.max.apply(null, boardRanks);
+
+        if (made.category >= 4) return 11;
+        if (made.category === 3) return 10;
+        if (made.category === 2) return 9;
+
+        if (made.category === 1) {
+            if (
+                holeRanks[0] === holeRanks[1] &&
+                !boardRanks.includes(holeRanks[0])
+            ) {
+                if (holeRanks[0] > maxBoard) return 8;
+                return 6;
+            }
+
+            if (holeRanks.includes(maxBoard)) return 7;
+            return 6;
+        }
+
+        const suits = suitCounts(allCards);
+        const flushDraw = suits.some(x => x === 4);
+        const straight = straightDrawInfo(allCards);
+
+        if (flushDraw && (straight.openEnded || straight.gutshot)) return 5;
+        if (flushDraw) return 4;
+        if (straight.openEnded) return 3;
+        if (straight.gutshot) return 2;
+
+        if (holeRanks[0] > maxBoard && holeRanks[1] > maxBoard) return 1;
+        return 0;
+    }
+
+    function flopBucket(hole, flopCards) {
+        return postflopBucket(hole, flopCards);
+    }
+
+    class Rng {
+        constructor(seed) {
+            this.state = (seed >>> 0) || 1;
+        }
+
+        next() {
+            let x = this.state;
+            x ^= x << 13;
+            x ^= x >>> 17;
+            x ^= x << 5;
+            this.state = x >>> 0;
+            return this.state / 4294967296;
+        }
+
+        int(maxExclusive) {
+            return Math.floor(this.next() * maxExclusive);
+        }
+    }
+
+    function buildConcreteRange(rangeWeights, flop) {
+        const blocked = new Set(flop);
+        const cards = [];
+        for (let c = 0; c < 52; c++) {
+            if (!blocked.has(c)) cards.push(c);
+        }
+
+        const range = [];
+        for (let i = 0; i < cards.length - 1; i++) {
+            for (let j = i + 1; j < cards.length; j++) {
+                const notation = handNotation(cards[i], cards[j]);
+                const weight = Number(rangeWeights && rangeWeights[notation]);
+
+                if (Number.isFinite(weight) && weight > 0) {
+                    range.push({
+                        cards: [cards[i], cards[j]],
+                        weight
+                    });
+                }
+            }
+        }
+
+        if (range.length === 0) {
+            for (let i = 0; i < cards.length - 1; i++) {
+                for (let j = i + 1; j < cards.length; j++) {
+                    range.push({
+                        cards: [cards[i], cards[j]],
+                        weight: 1
+                    });
+                }
+            }
+        }
+
+        return range;
+    }
+
+    class WeightedSampler {
+        constructor(range) {
+            this.range = range;
+            this.cumulative = new Float64Array(range.length);
+            let total = 0;
+
+            for (let i = 0; i < range.length; i++) {
+                total += range[i].weight;
+                this.cumulative[i] = total;
+            }
+
+            this.totalWeight = total;
+        }
+
+        drawIndex(rng) {
+            const target = rng.next() * this.totalWeight;
+            let low = 0;
+            let high = this.cumulative.length - 1;
+
+            while (low < high) {
+                const mid = (low + high) >> 1;
+                if (target <= this.cumulative[mid]) high = mid;
+                else low = mid + 1;
+            }
+
+            return low;
+        }
+
+        sample(rng, blocked) {
+            for (let attempt = 0; attempt < 64; attempt++) {
+                const chosen = this.range[this.drawIndex(rng)];
+                const a = chosen.cards[0];
+                const b = chosen.cards[1];
+
+                if (!blocked || (!blocked.has(a) && !blocked.has(b))) {
+                    return chosen.cards.slice();
+                }
+            }
+
+            const legal = [];
+            let total = 0;
+
+            for (const entry of this.range) {
+                const a = entry.cards[0];
+                const b = entry.cards[1];
+
+                if (blocked && (blocked.has(a) || blocked.has(b))) continue;
+
+                total += entry.weight;
+                legal.push({
+                    entry,
+                    cumulative: total
+                });
+            }
+
+            if (legal.length === 0) {
+                throw new Error("no compatible combo in range");
+            }
+
+            const target = rng.next() * total;
+            for (const item of legal) {
+                if (target <= item.cumulative) {
+                    return item.entry.cards.slice();
+                }
+            }
+
+            return legal[legal.length - 1].entry.cards.slice();
+        }
+    }
+
+    class Family {
+        constructor(nodeId, player, actions) {
+            this.nodeId = nodeId;
+            this.player = player;
+            this.actions = actions.slice();
+            this.actionCount = actions.length;
+            this.regrets = new Float64Array(BUCKET_NAMES.length * this.actionCount);
+            this.strategy = new Float64Array(BUCKET_NAMES.length * this.actionCount);
+            this.strategySum = new Float64Array(BUCKET_NAMES.length * this.actionCount);
+            this.visits = new Uint32Array(BUCKET_NAMES.length);
+            this.strategy.fill(1 / this.actionCount);
+        }
+
+        offset(bucket) {
+            return bucket * this.actionCount;
+        }
+
+        refresh(bucket) {
+            const offset = this.offset(bucket);
+            let total = 0;
+
+            for (let a = 0; a < this.actionCount; a++) {
+                const r = Math.max(0, this.regrets[offset + a]);
+                this.strategy[offset + a] = r;
+                total += r;
+            }
+
+            if (total <= 1e-15) {
+                const p = 1 / this.actionCount;
+                for (let a = 0; a < this.actionCount; a++) {
+                    this.strategy[offset + a] = p;
+                }
+                return;
+            }
+
+            for (let a = 0; a < this.actionCount; a++) {
+                this.strategy[offset + a] /= total;
+            }
+        }
+
+        averageAt(bucket) {
+            const offset = this.offset(bucket);
+            let total = 0;
+            for (let a = 0; a < this.actionCount; a++) {
+                total += this.strategySum[offset + a];
+            }
+
+            const out = [];
+            for (let a = 0; a < this.actionCount; a++) {
+                out.push(
+                    total > 1e-15
+                        ? this.strategySum[offset + a] / total
+                        : this.strategy[offset + a]
+                );
+            }
+
+            return out;
+        }
+    }
+
+    function cloneState(state) {
+        return {
+            oopContribution: state.oopContribution,
+            ipContribution: state.ipContribution
+        };
+    }
+
+    class Solver {
+        constructor(data) {
+            this.flop = data.flop.slice();
+            this.potBB = Number(data.potBB);
+            this.stackBB = Number(data.stackBB);
+            this.rootNode = data.rootNode;
+            this.initialState = {
+                oopContribution: Number(data.initialState.oopContribution || 0),
+                ipContribution: Number(data.initialState.ipContribution || 0)
+            };
+            this.rng = new Rng(data.seed || 1);
+
+            if (!FLOP_TREE[this.rootNode]) {
+                throw new Error("unknown root node");
+            }
+
+            const oopRange = buildConcreteRange(data.oopRangeWeights || {}, this.flop);
+            const ipRange = buildConcreteRange(data.ipRangeWeights || {}, this.flop);
+
+            this.oopSampler = new WeightedSampler(oopRange);
+            this.ipSampler = new WeightedSampler(ipRange);
+            this.families = {};
+
+            for (const nodeId of Object.keys(FLOP_TREE)) {
+                const node = FLOP_TREE[nodeId];
+                this.families[nodeId] = new Family(nodeId, node.player, node.actions);
+            }
+
+            this.iterations = 0;
+        }
+
+        sample() {
+            const boardBlocked = new Set(this.flop);
+            const oopHole = this.oopSampler.sample(this.rng, boardBlocked);
+
+            const ipBlocked = new Set(this.flop.concat(oopHole));
+            const ipHole = this.ipSampler.sample(this.rng, ipBlocked);
+
+            const blocked = new Set(this.flop.concat(oopHole, ipHole));
+            const deck = [];
+            for (let c = 0; c < 52; c++) {
+                if (!blocked.has(c)) deck.push(c);
+            }
+
+            const ti = this.rng.int(deck.length);
+            const turn = deck.splice(ti, 1)[0];
+            const ri = this.rng.int(deck.length);
+            const river = deck[ri];
+            const board5 = this.flop.concat([turn, river]);
+
+            const turnBoard = this.flop.concat([turn]);
+
+            return {
+                oopHole,
+                ipHole,
+                oopBucket: flopBucket(oopHole, this.flop),
+                ipBucket: flopBucket(ipHole, this.flop),
+                oopTurnBucket: postflopBucket(oopHole, turnBoard),
+                ipTurnBucket: postflopBucket(ipHole, turnBoard),
+                oopShare: showdownShare(oopHole, ipHole, board5)
+            };
+        }
+
+        betAmount(fraction, state, player) {
+            const currentPot =
+                this.potBB +
+                state.oopContribution +
+                state.ipContribution;
+
+            const ownContribution =
+                player === 0
+                    ? state.oopContribution
+                    : state.ipContribution;
+
+            const remaining = Math.max(0, this.stackBB - ownContribution);
+            const requested = currentPot * fraction;
+            return Math.min(remaining, Math.max(1, requested));
+        }
+
+        foldUtility(state, foldingPlayer) {
+            if (foldingPlayer === 0) {
+                return -state.oopContribution;
+            }
+            return this.potBB + state.ipContribution;
+        }
+
+        showdownUtility(state, sample) {
+            const totalPot =
+                this.potBB +
+                state.oopContribution +
+                state.ipContribution;
+
+            return sample.oopShare * totalPot - state.oopContribution;
+        }
+
+        callToMatch(state, caller) {
+            const next = cloneState(state);
+
+            if (caller === 0) {
+                next.oopContribution = Math.min(this.stackBB, next.ipContribution);
+            } else {
+                next.ipContribution = Math.min(this.stackBB, next.oopContribution);
+            }
+
+            return next;
+        }
+
+        jam(state, player) {
+            const next = cloneState(state);
+            if (player === 0) next.oopContribution = this.stackBB;
+            else next.ipContribution = this.stackBB;
+            return next;
+        }
+
+        bet(state, player, fraction) {
+            const next = cloneState(state);
+            const amount = this.betAmount(fraction, next, player);
+
+            if (player === 0) next.oopContribution += amount;
+            else next.ipContribution += amount;
+
+            return next;
+        }
+
+        transition(nodeId, action, state, sample) {
+            if (nodeId === "OOP_ROOT") {
+                if (action === "check") return { node: "IP_AFTER_CHECK", state };
+                if (action === "bet33") return { node: "IP_VS_OOP_B33", state: this.bet(state, 0, 0.33) };
+                if (action === "bet75") return { node: "IP_VS_OOP_B75", state: this.bet(state, 0, 0.75) };
+                if (action === "jam") return { node: "IP_VS_OOP_JAM", state: this.jam(state, 0) };
+            }
+
+            if (nodeId === "IP_AFTER_CHECK") {
+                if (action === "check") return { node: "TURN_OOP_ROOT", state };
+                if (action === "bet33") return { node: "OOP_VS_IP_B33", state: this.bet(state, 1, 0.33) };
+                if (action === "bet75") return { node: "OOP_VS_IP_B75", state: this.bet(state, 1, 0.75) };
+                if (action === "jam") return { node: "OOP_VS_IP_JAM", state: this.jam(state, 1) };
+            }
+
+            if (nodeId === "IP_VS_OOP_B33" || nodeId === "IP_VS_OOP_B75") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") return { node: "TURN_OOP_ROOT", state: this.callToMatch(state, 1) };
+                if (action === "jam") {
+                    return {
+                        node: nodeId === "IP_VS_OOP_B33"
+                            ? "OOP_VS_IP_JAM_AFTER_B33"
+                            : "OOP_VS_IP_JAM_AFTER_B75",
+                        state: this.jam(state, 1)
+                    };
+                }
+            }
+
+            if (nodeId === "OOP_VS_IP_B33" || nodeId === "OOP_VS_IP_B75") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") return { node: "TURN_OOP_ROOT", state: this.callToMatch(state, 0) };
+                if (action === "jam") {
+                    return {
+                        node: nodeId === "OOP_VS_IP_B33"
+                            ? "IP_VS_OOP_JAM_AFTER_B33"
+                            : "IP_VS_OOP_JAM_AFTER_B75",
+                        state: this.jam(state, 0)
+                    };
+                }
+            }
+
+            if (
+                nodeId === "IP_VS_OOP_JAM" ||
+                nodeId === "IP_VS_OOP_JAM_AFTER_B33" ||
+                nodeId === "IP_VS_OOP_JAM_AFTER_B75"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            if (
+                nodeId === "OOP_VS_IP_JAM" ||
+                nodeId === "OOP_VS_IP_JAM_AFTER_B33" ||
+                nodeId === "OOP_VS_IP_JAM_AFTER_B75"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            if (nodeId === "TURN_OOP_ROOT") {
+                if (action === "check") return { node: "TURN_IP_AFTER_CHECK", state };
+                if (action === "bet50") return { node: "TURN_IP_VS_OOP_B50", state: this.bet(state, 0, 0.50) };
+                if (action === "jam") return { node: "TURN_IP_VS_OOP_JAM", state: this.jam(state, 0) };
+            }
+
+            if (nodeId === "TURN_IP_AFTER_CHECK") {
+                if (action === "check") return { terminal: this.showdownUtility(state, sample) };
+                if (action === "bet50") return { node: "TURN_OOP_VS_IP_B50", state: this.bet(state, 1, 0.50) };
+                if (action === "jam") return { node: "TURN_OOP_VS_IP_JAM", state: this.jam(state, 1) };
+            }
+
+            if (nodeId === "TURN_IP_VS_OOP_B50") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
+                if (action === "jam") {
+                    return {
+                        node: "TURN_OOP_VS_IP_JAM_AFTER_B50",
+                        state: this.jam(state, 1)
+                    };
+                }
+            }
+
+            if (nodeId === "TURN_OOP_VS_IP_B50") {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
+                if (action === "jam") {
+                    return {
+                        node: "TURN_IP_VS_OOP_JAM_AFTER_B50",
+                        state: this.jam(state, 0)
+                    };
+                }
+            }
+
+            if (
+                nodeId === "TURN_IP_VS_OOP_JAM" ||
+                nodeId === "TURN_IP_VS_OOP_JAM_AFTER_B50"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 1) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 1),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            if (
+                nodeId === "TURN_OOP_VS_IP_JAM" ||
+                nodeId === "TURN_OOP_VS_IP_JAM_AFTER_B50"
+            ) {
+                if (action === "fold") return { terminal: this.foldUtility(state, 0) };
+                if (action === "call") {
+                    return {
+                        terminal: this.showdownUtility(
+                            this.callToMatch(state, 0),
+                            sample
+                        )
+                    };
+                }
+            }
+
+            throw new Error("unsupported transition " + nodeId + " / " + action);
+        }
+
+        cfr(nodeId, state, sample, reachOop, reachIp, updatePlayer) {
+            const node = FLOP_TREE[nodeId];
+            const family = this.families[nodeId];
+            const turnNode = nodeId.indexOf("TURN_") === 0;
+            const bucket = node.player === 0
+                ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+                : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
+            const offset = family.offset(bucket);
+            family.visits[bucket]++;
+
+            const values = new Float64Array(family.actionCount);
+            let nodeValue = 0;
+
+            for (let a = 0; a < family.actionCount; a++) {
+                const p = family.strategy[offset + a];
+                const tr = this.transition(nodeId, family.actions[a], state, sample);
+
+                const v = tr.terminal !== undefined
+                    ? tr.terminal
+                    : this.cfr(
+                        tr.node,
+                        tr.state,
+                        sample,
+                        node.player === 0 ? reachOop * p : reachOop,
+                        node.player === 1 ? reachIp * p : reachIp,
+                        updatePlayer
+                    );
+
+                values[a] = v;
+                nodeValue += p * v;
+            }
+
+            if (node.player === updatePlayer) {
+                const oppReach = node.player === 0 ? reachIp : reachOop;
+                const sign = node.player === 0 ? 1 : -1;
+
+                for (let a = 0; a < family.actionCount; a++) {
+                    const regret = oppReach * sign * (values[a] - nodeValue);
+                    family.regrets[offset + a] =
+                        Math.max(0, family.regrets[offset + a] + regret);
+                }
+
+                family.refresh(bucket);
+            }
+
+            return nodeValue;
+        }
+
+        accumulate(nodeId, state, sample, reachOop, reachIp, weight) {
+            const node = FLOP_TREE[nodeId];
+            const family = this.families[nodeId];
+            const turnNode = nodeId.indexOf("TURN_") === 0;
+            const bucket = node.player === 0
+                ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+                : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
+            const offset = family.offset(bucket);
+            const ownReach = node.player === 0 ? reachOop : reachIp;
+
+            for (let a = 0; a < family.actionCount; a++) {
+                const p = family.strategy[offset + a];
+                family.strategySum[offset + a] += weight * ownReach * p;
+
+                const tr = this.transition(nodeId, family.actions[a], state, sample);
+                if (tr.terminal !== undefined) continue;
+
+                this.accumulate(
+                    tr.node,
+                    tr.state,
+                    sample,
+                    node.player === 0 ? reachOop * p : reachOop,
+                    node.player === 1 ? reachIp * p : reachIp,
+                    weight
+                );
+            }
+        }
+
+        oneIteration() {
+            const sample = this.sample();
+            const state = cloneState(this.initialState);
+
+            this.cfr(this.rootNode, state, sample, 1, 1, 0);
+            this.cfr(this.rootNode, state, sample, 1, 1, 1);
+
+            this.iterations++;
+            this.accumulate(
+                this.rootNode,
+                state,
+                sample,
+                1,
+                1,
+                this.iterations
+            );
+        }
+
+        normalizedRegret() {
+            let total = 0;
+            let count = 0;
+
+            for (const nodeId of Object.keys(this.families)) {
+                const family = this.families[nodeId];
+                for (const r of family.regrets) {
+                    total += r;
+                    count++;
+                }
+            }
+
+            return total / Math.max(1, count) / Math.max(1, this.iterations);
+        }
+
+        strategyAt(nodeId, bucket) {
+            const family = this.families[nodeId];
+            const probabilities = family.averageAt(bucket);
+            return {
+                actions: family.actions.slice(),
+                probabilities,
+                visits: family.visits[bucket]
+            };
+        }
+    }
+
+    self.onmessage = function(e) {
+        const data = e.data || {};
+        const started = Date.now();
+
+        try {
+            const solver = new Solver(data);
+            const minIterations = Math.max(100, Number(data.minIterations) || 500);
+            const maxIterations = Math.max(minIterations, Number(data.maxIterations) || 20000);
+            const timeLimitMs = Math.max(20, Number(data.timeLimitMs) || 120);
+
+            while (solver.iterations < maxIterations) {
+                for (let i = 0; i < 50 && solver.iterations < maxIterations; i++) {
+                    solver.oneIteration();
+                }
+
+                if (
+                    solver.iterations >= minIterations &&
+                    Date.now() - started >= timeLimitMs
+                ) {
+                    break;
+                }
+            }
+
+            const heroHole = data.heroHole || [];
+            if (heroHole.length !== 2) {
+                throw new Error("hero hole cards missing");
+            }
+
+            const heroBucket = flopBucket(heroHole, solver.flop);
+            const strategy = solver.strategyAt(solver.rootNode, heroBucket);
+
+            self.postMessage({
+                ok: true,
+                rootNode: solver.rootNode,
+                heroBucket,
+                heroBucketName: BUCKET_NAMES[heroBucket],
+                actions: strategy.actions,
+                probabilities: strategy.probabilities,
+                bucketVisits: strategy.visits,
+                iterations: solver.iterations,
+                normalizedRegret: solver.normalizedRegret(),
+                turnBettingSolved: true,
+                riverBettingSolved: false,
+                elapsedMs: Date.now() - started
+            });
+        } catch (err) {
+            self.postMessage({
+                ok: false,
+                error: err && err.message ? err.message : String(err),
+                elapsedMs: Date.now() - started
+            });
+        }
+    };
+}
+
+function createFlopDepthCfrWorker() {
+    const workerCode = "(" + flopCfrWorkerBootstrap.toString() + ")();";
+    const blob = new Blob([workerCode], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+
+    const originalTerminate = worker.terminate.bind(worker);
+    worker.terminate = function () {
+        URL.revokeObjectURL(url);
+        originalTerminate();
+    };
+
+    return worker;
+}
+
+function cardToFlopCfrId(card) {
+    const suitMap = { S: 0, H: 1, D: 2, C: 3 };
+    const suit = suitMap[card.suit];
+    if (!Number.isFinite(suit)) {
+        throw new Error("unknown suit for flop CFR: " + card.suit);
+    }
+    return (card.rank - 2) * 4 + suit;
+}
+
+function getFlopCfrMix(index) {
+    const p = players[index];
+    if (!p) return 0;
+
+    if (Number.isFinite(p.flopDepthCfrMix)) {
+        return Math.max(0, Math.min(1, p.flopDepthCfrMix));
+    }
+
+    if (p.useFlopDepthCfr === true || ENABLE_FLOP_DEPTH_CFR) {
+        return FLOP_DEPTH_CFR_DEFAULT_MIX;
+    }
+
+    return 0;
+}
+
+function getHuFlopSeatInfo() {
+    const contestants = players
+        .map((p, i) => ({ p, i }))
+        .filter(x =>
+            x.p &&
+            !x.p.folded &&
+            x.p.hole &&
+            x.p.hole.length === 2
+        );
+
+    if (contestants.length !== 2) return null;
+
+    const ipIndex = dealerIndex;
+    if (!contestants.some(x => x.i === ipIndex)) return null;
+
+    const oopEntry = contestants.find(x => x.i !== ipIndex);
+    if (!oopEntry) return null;
+
+    return {
+        oopIndex: oopEntry.i,
+        ipIndex
+    };
+}
+
+function getFlopCfrPublicActions() {
+    return handActionHistory.filter(a =>
+        a &&
+        a.street === "flop" &&
+        ["check", "bet", "raise", "call", "fold"].includes(a.action)
+    );
+}
+
+function classifyFlopCfrBetSize(action) {
+    if (!action) return null;
+    if (action.isAllIn) return "jam";
+    if (action.action !== "bet") return null;
+
+    const potBefore = Math.max(1, action.potAfterAction - action.amountPaid);
+    const paid = Number(action.amountPaid) || 0;
+    const expected33 = Math.max(bigBlind, potBefore * 0.33);
+    const expected75 = Math.max(bigBlind, potBefore * 0.75);
+
+    const d33 = Math.abs(paid - expected33);
+    const d75 = Math.abs(paid - expected75);
+
+    const tolerance33 = Math.max(1, bigBlind * 0.15, expected33 * 0.18);
+    const tolerance75 = Math.max(1, bigBlind * 0.15, expected75 * 0.16);
+
+    if (d33 <= tolerance33 && d33 <= d75) return "bet33";
+    if (d75 <= tolerance75) return "bet75";
+    return null;
+}
+
+function classifyFlopDepthCfrNode(index) {
+    const seats = getHuFlopSeatInfo();
+    if (!seats) return null;
+
+    const { oopIndex, ipIndex } = seats;
+    const actions = getFlopCfrPublicActions();
+
+    if (actions.length === 0 && index === oopIndex) {
+        return "OOP_ROOT";
+    }
+
+    if (
+        actions.length === 1 &&
+        actions[0].playerIndex === oopIndex &&
+        index === ipIndex
+    ) {
+        const a0 = actions[0];
+
+        if (a0.action === "check") return "IP_AFTER_CHECK";
+
+        const size = classifyFlopCfrBetSize(a0);
+        if (size === "bet33") return "IP_VS_OOP_B33";
+        if (size === "bet75") return "IP_VS_OOP_B75";
+        if (size === "jam") return "IP_VS_OOP_JAM";
+        return null;
+    }
+
+    if (
+        actions.length === 2 &&
+        actions[0].playerIndex === oopIndex &&
+        actions[1].playerIndex === ipIndex
+    ) {
+        const [a0, a1] = actions;
+
+        if (a0.action === "check" && index === oopIndex) {
+            const size = classifyFlopCfrBetSize(a1);
+            if (size === "bet33") return "OOP_VS_IP_B33";
+            if (size === "bet75") return "OOP_VS_IP_B75";
+            if (size === "jam") return "OOP_VS_IP_JAM";
+        }
+
+        if (a1.isAllIn && a1.action === "raise" && index === oopIndex) {
+            const firstSize = classifyFlopCfrBetSize(a0);
+            if (firstSize === "bet33") return "OOP_VS_IP_JAM_AFTER_B33";
+            if (firstSize === "bet75") return "OOP_VS_IP_JAM_AFTER_B75";
+        }
+
+        return null;
+    }
+
+    if (
+        actions.length === 3 &&
+        actions[0].playerIndex === oopIndex &&
+        actions[1].playerIndex === ipIndex &&
+        actions[2].playerIndex === oopIndex &&
+        index === ipIndex
+    ) {
+        const [a0, a1, a2] = actions;
+
+        if (
+            a0.action === "check" &&
+            a2.action === "raise" &&
+            a2.isAllIn
+        ) {
+            const size = classifyFlopCfrBetSize(a1);
+            if (size === "bet33") return "IP_VS_OOP_JAM_AFTER_B33";
+            if (size === "bet75") return "IP_VS_OOP_JAM_AFTER_B75";
+        }
+    }
+
+    return null;
+}
+
+function getFlopCfrState() {
+    const seats = getHuFlopSeatInfo();
+    if (!seats) return null;
+
+    const bb = Math.max(1, bigBlind);
+    const oop = players[seats.oopIndex];
+    const ip = players[seats.ipIndex];
+
+    const oopContribution = Math.max(0, oop.currentBet) / bb;
+    const ipContribution = Math.max(0, ip.currentBet) / bb;
+    const basePot = Math.max(
+        1,
+        pot - oop.currentBet - ip.currentBet
+    ) / bb;
+
+    const stackBB = Math.min(
+        oop.chips + oop.currentBet,
+        ip.chips + ip.currentBet
+    ) / bb;
+
+    return {
+        seats,
+        potBB: basePot,
+        stackBB,
+        initialState: {
+            oopContribution,
+            ipContribution
+        }
+    };
+}
+
+function sampleFlopCfrAction(actions, probabilities) {
+    let r = Math.random();
+
+    for (let i = 0; i < actions.length; i++) {
+        r -= probabilities[i];
+        if (r <= 0) {
+            return {
+                action: actions[i],
+                probability: probabilities[i],
+                index: i
+            };
+        }
+    }
+
+    const last = actions.length - 1;
+    return {
+        action: actions[last],
+        probability: probabilities[last],
+        index: last
+    };
+}
+
+function executeFlopDepthCfrAction(index, action) {
+    const p = players[index];
+    if (!p) return false;
+
+    if (action === "check" || action === "call") {
+        callPlayer(index);
+        return true;
+    }
+
+    if (action === "fold") {
+        foldPlayer(index);
+        return true;
+    }
+
+    if (action === "jam") {
+        shovePlayer(index);
+        return true;
+    }
+
+    if (action === "bet33" || action === "bet75") {
+        if (currentBet !== 0 || p.currentBet !== 0) return false;
+
+        const fraction = action === "bet33" ? 0.33 : 0.75;
+        const requested = Math.max(bigBlind, Math.floor(pot * fraction));
+        const target = Math.min(
+            p.currentBet + p.chips,
+            Math.max(getLegalMinRaiseTo(), requested)
+        );
+
+        raisePlayer(index, target);
+        return true;
+    }
+
+    return false;
+}
+
+function requestFlopDepthCfrDecision(index, options = {}) {
+    const mix = getFlopCfrMix(index);
+
+    if (mix <= 0) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-disabled"
+        });
+    }
+
+    if (
+        street !== "flop" ||
+        board.length !== 3
+    ) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-not-flop"
+        });
+    }
+
+    const nodeId = classifyFlopDepthCfrNode(index);
+    if (!nodeId) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-off-tree"
+        });
+    }
+
+    const state = getFlopCfrState();
+    if (!state) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-not-heads-up"
+        });
+    }
+
+    if (
+        state.stackBB <= 1 ||
+        state.stackBB > FLOP_DEPTH_CFR_MAX_EFFECTIVE_STACK_BB
+    ) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-stack-outside-range",
+            stackBB: state.stackBB
+        });
+    }
+
+    if (Math.random() >= mix) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-mixture-fallback",
+            mix
+        });
+    }
+
+    const p = players[index];
+    if (!p || !p.hole || p.hole.length !== 2) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-no-hero-hole"
+        });
+    }
+
+    const { oopIndex, ipIndex } = state.seats;
+
+    let oopRangeWeights;
+    let ipRangeWeights;
+
+    try {
+        oopRangeWeights = estimateOpponentRange(oopIndex);
+        ipRangeWeights = estimateOpponentRange(ipIndex);
+    } catch (err) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-range-build-error",
+            error: err && err.message ? err.message : String(err)
+        });
+    }
+
+    let worker;
+    try {
+        worker = createFlopDepthCfrWorker();
+    } catch (err) {
+        return Promise.resolve({
+            handled: false,
+            reason: "flop-cfr-worker-create-error",
+            error: err && err.message ? err.message : String(err)
+        });
+    }
+
+    const timeLimitMs = Math.max(
+        25,
+        Number(options.timeLimitMs) ||
+            (autoPlayMode ? 80 : 260)
+    );
+
+    const minIterations = Math.max(
+        100,
+        Number(options.minIterations) ||
+            600
+    );
+
+    const maxIterations = Math.max(
+        minIterations,
+        Number(options.maxIterations) ||
+            600
+    );
+
+    const timeoutMs = Math.max(
+        timeLimitMs + 450,
+        Number(options.timeoutMs) ||
+            (autoPlayMode ? 750 : 1100)
+    );
+
+    const seed = Math.floor(Math.random() * 4294967295) >>> 0;
+
+    return new Promise(resolve => {
+        let settled = false;
+
+        function finish(result) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+
+            try {
+                worker.terminate();
+            } catch (err) {}
+
+            resolve(result);
+        }
+
+        const timer = setTimeout(() => {
+            finish({
+                handled: false,
+                reason: "flop-cfr-timeout",
+                nodeId,
+                stackBB: state.stackBB
+            });
+        }, timeoutMs);
+
+        worker.onerror = err => {
+            finish({
+                handled: false,
+                reason: "flop-cfr-worker-error",
+                nodeId,
+                error: err && err.message ? err.message : String(err)
+            });
+        };
+
+        worker.onmessage = event => {
+            const result = event && event.data ? event.data : {};
+
+            if (!result.ok) {
+                finish({
+                    handled: false,
+                    reason: "flop-cfr-solver-error",
+                    nodeId,
+                    error: result.error || "unknown solver error"
+                });
+                return;
+            }
+
+            if (
+                !Array.isArray(result.actions) ||
+                !Array.isArray(result.probabilities) ||
+                result.actions.length !== result.probabilities.length
+            ) {
+                finish({
+                    handled: false,
+                    reason: "flop-cfr-invalid-strategy",
+                    nodeId
+                });
+                return;
+            }
+
+            if (result.bucketVisits < FLOP_DEPTH_CFR_MIN_BUCKET_VISITS) {
+                finish({
+                    handled: false,
+                    reason: "flop-cfr-insufficient-bucket-visits",
+                    nodeId,
+                    heroBucket: result.heroBucket,
+                    heroBucketName: result.heroBucketName,
+                    bucketVisits: result.bucketVisits,
+                    iterations: result.iterations
+                });
+                return;
+            }
+
+            const sampled = sampleFlopCfrAction(
+                result.actions,
+                result.probabilities
+            );
+
+            finish({
+                handled: true,
+                reason: "flop-cfr-resolved",
+                nodeId,
+                action: sampled.action,
+                actionProbability: sampled.probability,
+                actions: result.actions,
+                probabilities: result.probabilities,
+                heroBucket: result.heroBucket,
+                heroBucketName: result.heroBucketName,
+                bucketVisits: result.bucketVisits,
+                iterations: result.iterations,
+                normalizedRegret: result.normalizedRegret,
+                solverElapsedMs: result.elapsedMs,
+                stackBB: state.stackBB,
+                potBB: state.potBB,
+                mix
+            });
+        };
+
+        worker.postMessage({
+            flop: board.map(cardToFlopCfrId),
+            heroHole: p.hole.map(cardToFlopCfrId),
+            potBB: state.potBB,
+            stackBB: state.stackBB,
+            rootNode: nodeId,
+            initialState: state.initialState,
+            oopRangeWeights,
+            ipRangeWeights,
+            seed,
+            timeLimitMs,
+            minIterations,
+            maxIterations
+        });
+    });
+}
+
+function recordFlopCfrDecisionDebug(index, result) {
+    const pending = pendingAiDebugInfo[index] || {};
+    const opponentRanges = pending.opponentRanges || [];
+
+    lastAiDebugInfo = {
+        aiName: players[index].name,
+        street,
+        equity: NaN,
+        equitySource: "flop-depth-cfr",
+        rawMonteCarloEquity: null,
+        strategyEquity: null,
+        strategyEquityAlpha: 0,
+        heuristicEquity: null,
+        toCall: Math.max(0, currentBet - players[index].currentBet),
+        planType: result.action,
+        purpose: "depth-limited-cfr",
+        tier: result.action,
+        amount: null,
+        spr: Number(getCurrentSPR(index).toFixed(2)),
+        opponents: getPostflopOpponentCount(index),
+        activePlayers: activePlayerCount(),
+        texture: analyzeBoardTexture(board),
+        hero: analyzeHeroBoardInteraction(players[index].hole, board),
+        opponentRanges,
+        opponentRead: null,
+        opponentModelReads: [],
+        opponentRangeReads: [],
+        postflopPlanRead: null,
+        decisionNarrative:
+            "Flop CFR " +
+            result.nodeId +
+            " / " +
+            result.heroBucketName +
+            " / " +
+            result.action,
+        flopCfr: {
+            nodeId: result.nodeId,
+            heroBucket: result.heroBucket,
+            heroBucketName: result.heroBucketName,
+            actionProbability: result.actionProbability,
+            actions: result.actions,
+            probabilities: result.probabilities,
+            bucketVisits: result.bucketVisits,
+            iterations: result.iterations,
+            normalizedRegret: result.normalizedRegret,
+            solverElapsedMs: result.solverElapsedMs,
+            stackBB: result.stackBB,
+            potBB: result.potBB,
+            mix: result.mix,
+            turnBettingSolved: !!result.turnBettingSolved,
+            riverBettingSolved: !!result.riverBettingSolved,
+            futureBettingSolved: false
+        }
+    };
+
+    delete pendingAiDebugInfo[index];
+    renderDebugPanel();
+}
+
 
 function createGtoWorker() {
     const workerCode = `

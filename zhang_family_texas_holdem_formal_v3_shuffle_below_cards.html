@@ -950,7 +950,7 @@
 <script>
 const FORMAL_RELEASE = true;
 const RANGE_MC_STRATEGY_ALPHA = 0.25;
-const ENABLE_FLOP_DEPTH_CFR = false;
+const ENABLE_FLOP_DEPTH_CFR = true;
 const FLOP_DEPTH_CFR_DEFAULT_MIX = 1.0;
 const FLOP_DEPTH_CFR_MAX_EFFECTIVE_STACK_BB = 25;
 const FLOP_DEPTH_CFR_MIN_BUCKET_VISITS = 8;
@@ -6167,10 +6167,10 @@ function performGTODecision(index) {
                 const flopCfrResult = await requestFlopDepthCfrDecision(
                     actingIndex,
                     {
-                        timeLimitMs: autoPlayMode ? 80 : 260,
-                        minIterations: autoPlayMode ? 400 : 1200,
-                        maxIterations: autoPlayMode ? 6000 : 20000,
-                        timeoutMs: autoPlayMode ? 750 : 1100
+                        timeLimitMs: autoPlayMode ? 80 : 180,
+                        minIterations: 600,
+                        maxIterations: 600,
+                        timeoutMs: autoPlayMode ? 750 : 950
                     }
                 );
 
@@ -10452,13 +10452,13 @@ function requestFlopDepthCfrDecision(index, options = {}) {
     const minIterations = Math.max(
         100,
         Number(options.minIterations) ||
-            (autoPlayMode ? 400 : 1200)
+            600
     );
 
     const maxIterations = Math.max(
         minIterations,
         Number(options.maxIterations) ||
-            (autoPlayMode ? 6000 : 20000)
+            600
     );
 
     const timeoutMs = Math.max(

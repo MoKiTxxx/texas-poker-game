@@ -238,6 +238,49 @@ function sumObject(obj) {
   );
 })();
 
+(function testWetFlopReachability() {
+  const flop = [
+    card(10, 0),
+    card(9, 1),
+    card(8, 2)
+  ];
+
+  const solver = new FlopDepthLimitedCFR({
+    flop,
+    potBB: 5,
+    stackBB: 15,
+    seed: 98765
+  });
+
+  solver.train(25000);
+
+  const rootFamily = solver.families.get("OOP_ROOT");
+  const straightPlusVisits = rootFamily.visits[11];
+  const strategy = solver.rootBucketStrategy(11);
+  const probabilities = Object.values(strategy);
+  const spread =
+    Math.max(...probabilities) -
+    Math.min(...probabilities);
+
+  console.log(
+    "wet flop straightPlus:",
+    {
+      visits: straightPlusVisits,
+      strategy
+    }
+  );
+
+  assert.ok(
+    straightPlusVisits > 20,
+    "straight+ bucket should be reachable on T98"
+  );
+
+  assert.ok(
+    spread > 0.05,
+    "reachable straight+ bucket should move away from its initial uniform strategy"
+  );
+})();
+
 console.log(
   "HU flop depth-limited CFR tests passed."
 );

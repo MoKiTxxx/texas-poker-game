@@ -1977,6 +1977,27 @@ function renderDebugPanel() {
     html += "<div><b>動作：</b>" + info.planType + "｜<b>目的：</b>" + (info.purpose || "-") + "｜<b>尺度：</b>" + (info.tier || "-") + "</div>";
     html += "<div><b>SPR：</b>" + (info.spr ?? "-") + "｜<b>對手數：</b>" + (info.opponents ?? "-") + "｜<b>下注額：</b>" + (info.amount !== null && info.amount !== undefined ? money(info.amount) : "-") + "</div>";
 
+    if (info.flopCfr) {
+        const fc = info.flopCfr;
+        const strategyText = (fc.actions || []).map((action, i) => {
+            const p = Array.isArray(fc.probabilities) ? fc.probabilities[i] : null;
+            return action + " " + formatPercent(p);
+        }).join(" / ");
+
+        html += "<div class='debugBlock'><b>Flop Depth CFR：</b>" +
+            (fc.nodeId || "-") + "｜bucket " +
+            (fc.heroBucketName || fc.heroBucket || "-") + "</div>";
+        html += "<div class='debugMono'>" +
+            strategyText +
+            "｜chosen " + (info.planType || "-") +
+            "｜visits " + (fc.bucketVisits ?? "-") +
+            "｜iterations " + (fc.iterations ?? "-") +
+            "｜regret " + (Number.isFinite(fc.normalizedRegret) ? fc.normalizedRegret.toExponential(2) : "-") +
+            "｜worker " + (fc.solverElapsedMs ?? "-") + "ms" +
+            "｜futureBettingSolved=" + (fc.futureBettingSolved ? "yes" : "no") +
+            "</div>";
+    }
+
     if (info.texture) {
         html += "<div class='debugBlock'><b>Board Texture：</b>" + info.texture.wetness + "，score " + info.texture.score + "</div>";
         html += "<div class='debugMono'>";

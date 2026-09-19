@@ -59,8 +59,18 @@ const script = html.slice(start, end);
 
 const harness = String.raw`
 return (() => {
-  if (ENABLE_FLOP_DEPTH_CFR !== false) {
-    throw new Error("flop CFR live flag must remain off during first adapter milestone");
+  if (ENABLE_FLOP_DEPTH_CFR !== true) {
+    throw new Error("validated flop+turn CFR live flag must be enabled");
+  }
+
+  const decisionSource = performGTODecision.toString();
+  if (
+    !decisionSource.includes("minIterations: 600") ||
+    !decisionSource.includes("maxIterations: 600")
+  ) {
+    throw new Error(
+      "live flop CFR must stay aligned with the validated 600-iteration budget"
+    );
   }
 
   bigBlind = 20;

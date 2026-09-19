@@ -90,3 +90,56 @@ The first milestone checks:
   range rather than observed.
 
 No live AI policy is changed in this milestone.
+
+
+## Live Web Worker adapter
+
+The standalone HTML now contains a feature-flagged live adapter.
+
+Current guardrails:
+
+- `ENABLE_FLOP_DEPTH_CFR = false` by default;
+- heads-up only;
+- flop only;
+- effective stack capped at 25BB;
+- only public histories representable by the trained flop tree are resolved;
+- approximate 33% / 75% observed bets are mapped into the action abstraction;
+- other bet sizes are treated as off-tree and fall back to v37;
+- a bucket needs at least 8 sampled visits before its CFR strategy is allowed to act;
+- worker error, timeout, invalid output, or insufficient visits all fall back to the existing Range-MC / v37 decision path.
+
+Live ranges are built from the existing public range model for **both** seats. The worker receives notation weights, not the opponent's real hole cards. The acting player's actual cards are sent only to identify that player's own flop information bucket.
+
+The live worker returns:
+
+- current public node;
+- acting player's own bucket;
+- mixed strategy;
+- sampled bucket visits;
+- CFR iterations;
+- normalized regret;
+- worker elapsed time.
+
+The main thread samples the final action and applies it to the existing poker engine.
+
+### Current live compute budget
+
+Autoplay target:
+
+```
+timeLimitMs = 80
+minIterations = 400
+maxIterations = 6000
+```
+
+Interactive target:
+
+```
+timeLimitMs = 260
+minIterations = 1200
+maxIterations = 20000
+```
+
+A separate Node regression executes the exact worker bootstrap and validates all 12 supported public flop nodes, probability normalization, off-tree fallback, and a real solve payload.
+
+The live flag must remain disabled until duplicate A/B holdout shows a reproducible advantage over the existing postflop policy.

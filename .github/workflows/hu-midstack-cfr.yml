@@ -1,0 +1,34 @@
+name: HU midstack CFR validation
+
+on:
+  push:
+    branches:
+      - feature/hu-midstack-cfr
+    paths:
+      - cfr/hu-midstack-cfr.js
+      - cfr/hu-midstack-cfr.test.js
+      - cfr/export-hu-midstack-blueprint.js
+      - cfr/HU_MIDSTACK.md
+      - .github/workflows/hu-midstack-cfr.yml
+  pull_request:
+    branches:
+      - feature/hu-preflop-cfr
+    paths:
+      - cfr/**
+      - .github/workflows/hu-midstack-cfr.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Keep 5–10BB push/fold regression green
+        run: node cfr/hu-pushfold-cfr.test.js
+      - name: Run 12–20BB midstack regression tests
+        run: node cfr/hu-midstack-cfr.test.js
+      - name: Train 15BB convergence benchmark
+        run: node cfr/hu-midstack-cfr.js 200000 15

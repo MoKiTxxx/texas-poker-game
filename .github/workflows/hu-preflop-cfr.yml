@@ -1,0 +1,35 @@
+name: HU preflop CFR validation
+
+on:
+  push:
+    branches:
+      - feature/hu-preflop-cfr
+    paths:
+      - cfr/holdem169.js
+      - cfr/hu-pushfold-cfr.js
+      - cfr/hu-pushfold-cfr.test.js
+      - cfr/export-hu-pushfold-blueprint.js
+      - cfr/HU_PREFLOP.md
+      - .github/workflows/hu-preflop-cfr.yml
+  pull_request:
+    branches:
+      - feature/cfr-blueprint
+    paths:
+      - cfr/**
+      - .github/workflows/hu-preflop-cfr.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run HU push/fold regression tests
+        run: node cfr/hu-pushfold-cfr.test.js
+      - name: Train 10BB blueprint benchmark
+        run: node cfr/hu-pushfold-cfr.js 5000 10
+      - name: Export blueprint
+        run: node cfr/export-hu-pushfold-blueprint.js 5000 10 /tmp/hu-pushfold-10bb.json

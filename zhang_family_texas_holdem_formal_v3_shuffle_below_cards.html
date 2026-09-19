@@ -950,6 +950,10 @@
 <script>
 const FORMAL_RELEASE = true;
 const RANGE_MC_STRATEGY_ALPHA = 0.25;
+const ENABLE_HU_PUSHFOLD_CFR = false;
+const HU_PUSHFOLD_CFR_DEFAULT_MIX = 1.0;
+const HU_PUSHFOLD_CFR_STACKS = [5, 8, 10, 12, 15];
+const HU_PUSHFOLD_CFR_BLUEPRINTS = {"5":{"sbShove":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":1,"A3s":1,"K7s":1,"Q8s":1,"86s":1,"54s":0.999999,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":1,"75s":1,"64s":0.999998,"T9o":1,"K5s":1,"Q7s":1,"T6s":1,"53s":0.999991,"98o":1,"K4s":1,"J9o":1,"Q9o":1,"87o":1,"K3s":1,"Q6s":1,"J6s":1,"43s":0.99994,"K2s":1,"T8o":1,"76o":0.999994,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":1,"A4o":1,"A3o":1,"96s":1,"A2o":1,"Q8o":1,"T7o":1,"Q4s":1,"97o":1,"K8o":1,"Q3s":1,"J5s":1,"K7o":1,"95s":1,"Q2s":1,"J7o":1,"J4s":1,"K6o":1,"96o":0.179392,"J3s":1,"T5s":1,"86o":0.999989,"Q7o":1,"85s":1,"J2s":1,"T4s":1,"Q6o":1,"84s":0.999992,"T6o":1,"T3s":1,"K5o":1,"T2s":0.999999,"K4o":1,"94s":0.99999,"J6o":1,"74s":0.999996,"K3o":1,"93s":0.000076,"Q5o":1,"85o":0,"73s":0,"K2o":1,"92s":0,"Q4o":1,"75o":0,"65o":0.000007,"Q3o":1,"83s":0,"J5o":1,"63s":0.000106,"95o":0,"Q2o":1,"82s":0,"J4o":1,"74o":0,"62s":0,"J3o":0.999997,"64o":0,"T5o":0.000001,"54o":0,"J2o":0.000003,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"bbCall":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":0.000012,"A3s":1,"K7s":1,"Q8s":1,"86s":1,"54s":0,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":1,"75s":0.000002,"64s":0,"T9o":1,"K5s":1,"Q7s":1,"T6s":1,"53s":0,"98o":1,"K4s":1,"J9o":1,"Q9o":1,"87o":0.000001,"K3s":1,"Q6s":1,"J6s":1,"43s":0,"K2s":1,"T8o":1,"76o":0,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":1,"A4o":1,"A3o":1,"96s":1,"A2o":1,"Q8o":1,"T7o":1,"Q4s":1,"97o":0.752275,"K8o":1,"Q3s":1,"J5s":1,"K7o":1,"95s":0.54404,"Q2s":1,"J7o":1,"J4s":1,"K6o":1,"96o":0,"J3s":1,"T5s":1,"86o":0,"Q7o":1,"85s":0.000002,"J2s":1,"T4s":0.99998,"Q6o":1,"84s":0,"T6o":0.000001,"T3s":0.000002,"K5o":1,"T2s":0.000001,"K4o":1,"94s":0,"J6o":1,"74s":0,"K3o":1,"93s":0,"Q5o":1,"85o":0,"73s":0,"K2o":1,"92s":0,"Q4o":1,"75o":0,"65o":0,"Q3o":1,"83s":0,"J5o":0.999992,"63s":0,"95o":0,"Q2o":1,"82s":0,"J4o":0.000002,"74o":0,"62s":0,"J3o":0.000001,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"metrics":{"weightedShoveFrequency":0.715047488,"weightedCallFrequency":0.619308793}},"8":{"sbShove":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":1,"A3s":1,"K7s":1,"Q8s":1,"86s":1,"54s":0.999999,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":1,"75s":0.999999,"64s":0.999998,"T9o":1,"K5s":1,"Q7s":1,"T6s":1,"53s":0.999995,"98o":1,"K4s":1,"J9o":1,"Q9o":1,"87o":0.999998,"K3s":1,"Q6s":1,"J6s":1,"43s":0.000187,"K2s":1,"T8o":1,"76o":0.999993,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":1,"A4o":1,"A3o":1,"96s":1,"A2o":1,"Q8o":1,"T7o":0.999406,"Q4s":1,"97o":0.999996,"K8o":1,"Q3s":1,"J5s":1,"K7o":1,"95s":0.999998,"Q2s":1,"J7o":0.999999,"J4s":1,"K6o":1,"96o":0,"J3s":0.999999,"T5s":0.999998,"86o":0.000013,"Q7o":1,"85s":0.999999,"J2s":0.999995,"T4s":0.999996,"Q6o":1,"84s":0.00047,"T6o":0,"T3s":0.000023,"K5o":1,"T2s":0,"K4o":1,"94s":0.000002,"J6o":0,"74s":0.999995,"K3o":1,"93s":0,"Q5o":1,"85o":0,"73s":0,"K2o":1,"92s":0,"Q4o":0.225422,"75o":0,"65o":0.000006,"Q3o":0.000005,"83s":0,"J5o":0,"63s":0.000017,"95o":0,"Q2o":0.000001,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"bbCall":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":0.999989,"A8s":1,"K9s":1,"T8s":0.999999,"87s":0,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":0,"ATo":1,"A4s":1,"K8s":1,"T7s":0,"97s":0,"65s":0,"A3s":1,"K7s":1,"Q8s":1,"86s":0,"54s":0,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":0.999994,"75s":0,"64s":0,"T9o":0.999983,"K5s":1,"Q7s":1,"T6s":0,"53s":0,"98o":0,"K4s":1,"J9o":1,"Q9o":1,"87o":0,"K3s":1,"Q6s":1,"J6s":0,"43s":0,"K2s":1,"T8o":0,"76o":0,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0.000001,"A4o":1,"A3o":1,"96s":0,"A2o":1,"Q8o":1,"T7o":0,"Q4s":0.999994,"97o":0,"K8o":1,"Q3s":0.000001,"J5s":0,"K7o":1,"95s":0,"Q2s":0.000001,"J7o":0,"J4s":0,"K6o":1,"96o":0,"J3s":0,"T5s":0,"86o":0,"Q7o":0.512261,"85s":0,"J2s":0,"T4s":0,"Q6o":0.000001,"84s":0,"T6o":0,"T3s":0,"K5o":1,"T2s":0,"K4o":1,"94s":0,"J6o":0,"74s":0,"K3o":1,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0.999998,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"metrics":{"weightedShoveFrequency":0.6189297,"weightedCallFrequency":0.449582853}},"10":{"sbShove":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":1,"A3s":1,"K7s":1,"Q8s":1,"86s":1,"54s":0.999999,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":1,"75s":0.999999,"64s":0.999998,"T9o":1,"K5s":1,"Q7s":1,"T6s":0.999999,"53s":0.999999,"98o":0.999999,"K4s":1,"J9o":1,"Q9o":1,"87o":0.999997,"K3s":1,"Q6s":1,"J6s":1,"43s":0.684562,"K2s":1,"T8o":0.999999,"76o":0.999985,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0.999999,"A4o":1,"A3o":1,"96s":1,"A2o":1,"Q8o":1,"T7o":0.000073,"Q4s":1,"97o":0.999988,"K8o":1,"Q3s":1,"J5s":0.999999,"K7o":1,"95s":0.999997,"Q2s":1,"J7o":0.000002,"J4s":0.999998,"K6o":1,"96o":0,"J3s":0.99999,"T5s":0.999994,"86o":0.000001,"Q7o":0.999999,"85s":0.999999,"J2s":0.000002,"T4s":0.99998,"Q6o":0.000111,"84s":0.999733,"T6o":0,"T3s":0.000001,"K5o":1,"T2s":0,"K4o":1,"94s":0,"J6o":0,"74s":0.999994,"K3o":1,"93s":0,"Q5o":0.000003,"85o":0,"73s":0,"K2o":1,"92s":0,"Q4o":0.000001,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0.000019,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"bbCall":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":0.999999,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":0,"A8s":1,"K9s":1,"T8s":0,"87s":0,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":0.999991,"76s":0,"ATo":1,"A4s":1,"K8s":1,"T7s":0,"97s":0,"65s":0,"A3s":1,"K7s":1,"Q8s":1,"86s":0,"54s":0,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":0,"75s":0,"64s":0,"T9o":0,"K5s":1,"Q7s":0.999996,"T6s":0,"53s":0,"98o":0,"K4s":1,"J9o":0,"Q9o":1,"87o":0,"K3s":1,"Q6s":0.371483,"J6s":0,"43s":0,"K2s":1,"T8o":0,"76o":0,"Q5s":0,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0,"A4o":1,"A3o":1,"96s":0,"A2o":1,"Q8o":0.000011,"T7o":0,"Q4s":0,"97o":0,"K8o":1,"Q3s":0,"J5s":0,"K7o":1,"95s":0,"Q2s":0,"J7o":0,"J4s":0,"K6o":1,"96o":0,"J3s":0,"T5s":0,"86o":0,"Q7o":0,"85s":0,"J2s":0,"T4s":0,"Q6o":0,"84s":0,"T6o":0,"T3s":0,"K5o":0.999995,"T2s":0,"K4o":0.000001,"94s":0,"J6o":0,"74s":0,"K3o":0,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"metrics":{"weightedShoveFrequency":0.582759397,"weightedCallFrequency":0.373669681}},"12":{"sbShove":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":0.999999,"A3s":1,"K7s":1,"Q8s":1,"86s":1,"54s":0.999999,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":1,"75s":0.999999,"64s":0.999999,"T9o":1,"K5s":1,"Q7s":1,"T6s":0.999999,"53s":0.999997,"98o":0.999998,"K4s":1,"J9o":1,"Q9o":1,"87o":0.999993,"K3s":1,"Q6s":1,"J6s":0.999999,"43s":0.000001,"K2s":1,"T8o":0.999998,"76o":0.000021,"Q5s":1,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0.999995,"A4o":1,"A3o":1,"96s":0.999999,"A2o":1,"Q8o":1,"T7o":0,"Q4s":1,"97o":0.000013,"K8o":1,"Q3s":0.999999,"J5s":0.999998,"K7o":1,"95s":0.999994,"Q2s":0.99999,"J7o":0,"J4s":0.99998,"K6o":1,"96o":0,"J3s":0.000003,"T5s":0.000839,"86o":0,"Q7o":0.000002,"85s":0.999998,"J2s":0,"T4s":0.000005,"Q6o":0.000001,"84s":0.000002,"T6o":0,"T3s":0,"K5o":1,"T2s":0,"K4o":1,"94s":0,"J6o":0,"74s":0.999928,"K3o":1,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0.000013,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"bbCall":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":0.000001,"AJo":1,"KQo":1,"A9s":1,"J9s":0.999996,"98s":0,"A8s":1,"K9s":1,"T8s":0,"87s":0,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":0,"76s":0,"ATo":1,"A4s":1,"K8s":1,"T7s":0,"97s":0,"65s":0,"A3s":1,"K7s":1,"Q8s":0.999994,"86s":0,"54s":0,"A2s":1,"KTo":1,"QTo":1,"JTo":0.999988,"K6s":1,"J7s":0,"75s":0,"64s":0,"T9o":0,"K5s":1,"Q7s":0,"T6s":0,"53s":0,"98o":0,"K4s":0.999995,"J9o":0,"Q9o":0.000007,"87o":0,"K3s":0.000001,"Q6s":0,"J6s":0,"43s":0,"K2s":0.000001,"T8o":0,"76o":0,"Q5s":0,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0,"A4o":1,"A3o":1,"96s":0,"A2o":1,"Q8o":0,"T7o":0,"Q4s":0,"97o":0,"K8o":1,"Q3s":0,"J5s":0,"K7o":0.999999,"95s":0,"Q2s":0,"J7o":0,"J4s":0,"K6o":0.000001,"96o":0,"J3s":0,"T5s":0,"86o":0,"Q7o":0,"85s":0,"J2s":0,"T4s":0,"Q6o":0,"84s":0,"T6o":0,"T3s":0,"K5o":0,"T2s":0,"K4o":0,"94s":0,"J6o":0,"74s":0,"K3o":0,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"metrics":{"weightedShoveFrequency":0.532430882,"weightedCallFrequency":0.330316678}},"15":{"sbShove":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":1,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":1,"AJo":1,"KQo":1,"A9s":1,"J9s":1,"98s":1,"A8s":1,"K9s":1,"T8s":1,"87s":1,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":1,"J8s":1,"76s":1,"ATo":1,"A4s":1,"K8s":1,"T7s":1,"97s":1,"65s":0.999999,"A3s":1,"K7s":1,"Q8s":1,"86s":0.999999,"54s":0.999998,"A2s":1,"KTo":1,"QTo":1,"JTo":1,"K6s":1,"J7s":0.999999,"75s":0.999997,"64s":0.999997,"T9o":0.999999,"K5s":1,"Q7s":1,"T6s":0.999997,"53s":0,"98o":0.999994,"K4s":1,"J9o":0.999999,"Q9o":1,"87o":0.000105,"K3s":1,"Q6s":1,"J6s":0.999993,"43s":0,"K2s":1,"T8o":0.999908,"76o":0,"Q5s":0.999998,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0.000009,"A4o":1,"A3o":1,"96s":0.999998,"A2o":1,"Q8o":0.000005,"T7o":0,"Q4s":0.911603,"97o":0,"K8o":1,"Q3s":0.000002,"J5s":0.001724,"K7o":1,"95s":0.000016,"Q2s":0,"J7o":0,"J4s":0,"K6o":0.999987,"96o":0,"J3s":0,"T5s":0,"86o":0,"Q7o":0,"85s":0.999993,"J2s":0,"T4s":0,"Q6o":0,"84s":0,"T6o":0,"T3s":0,"K5o":0.000007,"T2s":0,"K4o":0.000001,"94s":0,"J6o":0,"74s":0,"K3o":0.000001,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"bbCall":{"22":1,"33":1,"44":1,"55":1,"66":1,"77":1,"88":1,"99":1,"AA":1,"KK":1,"QQ":1,"AKs":1,"JJ":1,"AQs":1,"KQs":1,"AKo":1,"TT":1,"AJs":1,"KJs":1,"QJs":1,"JTs":0.999999,"AQo":1,"ATs":1,"KTs":1,"QTs":1,"T9s":0,"AJo":1,"KQo":1,"A9s":1,"J9s":0,"98s":0,"A8s":1,"K9s":1,"T8s":0,"87s":0,"A7s":1,"KJo":1,"QJo":1,"A5s":1,"A6s":1,"Q9s":0.999977,"J8s":0,"76s":0,"ATo":1,"A4s":1,"K8s":1,"T7s":0,"97s":0,"65s":0,"A3s":1,"K7s":0.999998,"Q8s":0,"86s":0,"54s":0,"A2s":1,"KTo":1,"QTo":0.697262,"JTo":0,"K6s":0.000001,"J7s":0,"75s":0,"64s":0,"T9o":0,"K5s":0.000001,"Q7s":0,"T6s":0,"53s":0,"98o":0,"K4s":0,"J9o":0,"Q9o":0,"87o":0,"K3s":0,"Q6s":0,"J6s":0,"43s":0,"K2s":0,"T8o":0,"76o":0,"Q5s":0,"A9o":1,"K9o":1,"A8o":1,"A7o":1,"A6o":1,"A5o":1,"J8o":0,"A4o":1,"A3o":1,"96s":0,"A2o":1,"Q8o":0,"T7o":0,"Q4s":0,"97o":0,"K8o":0.000001,"Q3s":0,"J5s":0,"K7o":0,"95s":0,"Q2s":0,"J7o":0,"J4s":0,"K6o":0,"96o":0,"J3s":0,"T5s":0,"86o":0,"Q7o":0,"85s":0,"J2s":0,"T4s":0,"Q6o":0,"84s":0,"T6o":0,"T3s":0,"K5o":0,"T2s":0,"K4o":0,"94s":0,"J6o":0,"74s":0,"K3o":0,"93s":0,"Q5o":0,"85o":0,"73s":0,"K2o":0,"92s":0,"Q4o":0,"75o":0,"65o":0,"Q3o":0,"83s":0,"J5o":0,"63s":0,"95o":0,"Q2o":0,"82s":0,"J4o":0,"74o":0,"62s":0,"J3o":0,"64o":0,"T5o":0,"54o":0,"J2o":0,"72s":0,"T4o":0,"52s":0,"84o":0,"T3o":0,"42s":0,"63o":0,"32s":0,"T2o":0,"53o":0,"94o":0,"43o":0,"93o":0,"73o":0,"92o":0,"52o":0,"42o":0,"83o":0,"32o":0,"82o":0,"62o":0,"72o":0},"metrics":{"weightedShoveFrequency":0.456752239,"weightedCallFrequency":0.285344705}}};
 let players = [];
 let deck = [];
 let board = [];
@@ -4031,6 +4035,205 @@ function shouldCallHumanAllIn(index, notation, strength, toCall) {
 }
 
 
+function getHuCfrStrategicPlayers() {
+    return players
+        .map((p, i) => ({ p, i }))
+        .filter(x =>
+            x.p &&
+            !x.p.folded &&
+            (
+                x.p.chips > 0 ||
+                (x.p.hole && x.p.hole.length === 2 && x.p.allIn)
+            )
+        );
+}
+
+function getHuCfrMix(index) {
+    const p = players[index];
+    if (!p) return 0;
+
+    if (Number.isFinite(p.huPushFoldCfrMix)) {
+        return Math.max(0, Math.min(1, p.huPushFoldCfrMix));
+    }
+
+    if (p.useHuPushFoldCfr === true || ENABLE_HU_PUSHFOLD_CFR) {
+        return HU_PUSHFOLD_CFR_DEFAULT_MIX;
+    }
+
+    return 0;
+}
+
+function getHuCfrEffectiveStackBB(index) {
+    const p = players[index];
+    if (!p) return Infinity;
+
+    const opponents = getHuCfrStrategicPlayers().filter(x => x.i !== index);
+    if (opponents.length !== 1) return Infinity;
+
+    const bb = Math.max(1, bigBlind);
+    const ownTotal = p.chips + p.currentBet;
+    const opp = opponents[0].p;
+    const oppTotal = opp.chips + opp.currentBet;
+
+    return Math.min(ownTotal, oppTotal) / bb;
+}
+
+function getHuCfrStackInterpolation(effectiveBB) {
+    if (!Number.isFinite(effectiveBB)) return null;
+
+    if (effectiveBB <= HU_PUSHFOLD_CFR_STACKS[0]) {
+        return { low: 5, high: 5, t: 0 };
+    }
+
+    const max = HU_PUSHFOLD_CFR_STACKS[HU_PUSHFOLD_CFR_STACKS.length - 1];
+    if (effectiveBB >= max) {
+        return { low: max, high: max, t: 0 };
+    }
+
+    for (let i = 0; i < HU_PUSHFOLD_CFR_STACKS.length - 1; i++) {
+        const low = HU_PUSHFOLD_CFR_STACKS[i];
+        const high = HU_PUSHFOLD_CFR_STACKS[i + 1];
+
+        if (effectiveBB >= low && effectiveBB <= high) {
+            return {
+                low,
+                high,
+                t: (effectiveBB - low) / Math.max(1e-9, high - low)
+            };
+        }
+    }
+
+    return null;
+}
+
+function getHuCfrProbability(role, notation, effectiveBB) {
+    const bracket = getHuCfrStackInterpolation(effectiveBB);
+    if (!bracket) return null;
+
+    const field = role === "sb" ? "sbShove" : "bbCall";
+    const lowMap = HU_PUSHFOLD_CFR_BLUEPRINTS[bracket.low][field];
+    const highMap = HU_PUSHFOLD_CFR_BLUEPRINTS[bracket.high][field];
+
+    if (!Object.prototype.hasOwnProperty.call(lowMap, notation) ||
+        !Object.prototype.hasOwnProperty.call(highMap, notation)) {
+        return null;
+    }
+
+    const lowP = Number(lowMap[notation]);
+    const highP = Number(highMap[notation]);
+    const probability = lowP + (highP - lowP) * bracket.t;
+
+    return {
+        probability: Math.max(0, Math.min(1, probability)),
+        bracket
+    };
+}
+
+function getHuCfrVoluntaryPreflopActions() {
+    return handActionHistory.filter(a =>
+        a &&
+        a.street === "preflop" &&
+        !a.forcedBlind
+    );
+}
+
+function tryExecuteHuPushFoldCfr(index, notation, toCall) {
+    const mix = getHuCfrMix(index);
+    if (mix <= 0) {
+        return { handled: false, reason: "hu-cfr-disabled" };
+    }
+
+    const strategic = getHuCfrStrategicPlayers();
+    if (strategic.length !== 2) {
+        return { handled: false, reason: "hu-cfr-not-heads-up" };
+    }
+
+    const effectiveBB = getHuCfrEffectiveStackBB(index);
+
+    // The trained grid starts at 5BB. Below 4.5BB the existing emergency
+    // push/fold logic remains in charge; above 15.5BB this abstraction is too coarse.
+    if (effectiveBB < 4.5 || effectiveBB > 15.5) {
+        return { handled: false, reason: "hu-cfr-outside-stack-grid", effectiveBB };
+    }
+
+    // Policy mixture: when mix < 1, the remaining probability falls through
+    // to the existing v37 policy.
+    if (Math.random() >= mix) {
+        return { handled: false, reason: "hu-cfr-mixture-fallback", effectiveBB, mix };
+    }
+
+    const p = players[index];
+    const voluntary = getHuCfrVoluntaryPreflopActions();
+    const sbIndex = dealerIndex; // heads-up dealer is the small blind.
+    const bbIndex = strategic.find(x => x.i !== sbIndex)?.i ?? -1;
+
+    const sbFirstIn =
+        index === sbIndex &&
+        voluntary.length === 0 &&
+        currentBet === bigBlind &&
+        toCall > 0 &&
+        toCall <= bigBlind;
+
+    if (sbFirstIn) {
+        const lookup = getHuCfrProbability("sb", notation, effectiveBB);
+        if (!lookup) return { handled: false, reason: "hu-cfr-no-sb-lookup" };
+
+        const shove = Math.random() < lookup.probability;
+
+        annotatePreflopDecisionDebug(index, {
+            huCfrVersion: "real-equity-v1",
+            huCfrRole: "SB",
+            huCfrEffectiveBB: Number(effectiveBB.toFixed(2)),
+            huCfrStackLow: lookup.bracket.low,
+            huCfrStackHigh: lookup.bracket.high,
+            huCfrInterpolation: Number(lookup.bracket.t.toFixed(3)),
+            huCfrActionProbability: Number(lookup.probability.toFixed(4)),
+            huCfrMix: mix,
+            huCfrAction: shove ? "shove" : "fold"
+        });
+
+        if (shove) shovePlayer(index);
+        else foldPlayer(index);
+
+        return { handled: true, reason: "hu-cfr-sb-pushfold" };
+    }
+
+    const directSbShove =
+        index === bbIndex &&
+        toCall > 0 &&
+        voluntary.length === 1 &&
+        voluntary[0].playerIndex === sbIndex &&
+        voluntary[0].action === "raise" &&
+        voluntary[0].isAllIn === true;
+
+    if (directSbShove) {
+        const lookup = getHuCfrProbability("bb", notation, effectiveBB);
+        if (!lookup) return { handled: false, reason: "hu-cfr-no-bb-lookup" };
+
+        const call = Math.random() < lookup.probability;
+
+        annotatePreflopDecisionDebug(index, {
+            huCfrVersion: "real-equity-v1",
+            huCfrRole: "BB",
+            huCfrEffectiveBB: Number(effectiveBB.toFixed(2)),
+            huCfrStackLow: lookup.bracket.low,
+            huCfrStackHigh: lookup.bracket.high,
+            huCfrInterpolation: Number(lookup.bracket.t.toFixed(3)),
+            huCfrActionProbability: Number(lookup.probability.toFixed(4)),
+            huCfrMix: mix,
+            huCfrAction: call ? "call" : "fold"
+        });
+
+        if (call) callPlayer(index);
+        else foldPlayer(index);
+
+        return { handled: true, reason: "hu-cfr-bb-callfold" };
+    }
+
+    return { handled: false, reason: "hu-cfr-spot-not-covered", effectiveBB };
+}
+
+
 function executeHeadsUpPreflopAction(index, notation, strength, posCategory, toCall, profile, stack, aggression, tightness, randomValue) {
     if (activePlayerCount() !== 2) {
         return { handled: false, reason: "not-heads-up" };
@@ -4196,6 +4399,19 @@ function executePreflopAction(index) {
 
     const profile = p.profile || aiProfiles.TAG;
     const stack = getStackProfile(index);
+
+    const huCfrDecision = tryExecuteHuPushFoldCfr(index, notation, toCall);
+    annotatePreflopDecisionDebug(index, {
+        huCfrAttempt: huCfrDecision.reason || "none",
+        huCfrHandled: !!huCfrDecision.handled,
+        huCfrEffectiveBB: Number.isFinite(huCfrDecision.effectiveBB)
+            ? Number(huCfrDecision.effectiveBB.toFixed(2))
+            : undefined
+    });
+    if (huCfrDecision.handled) {
+        return;
+    }
+
     let aggression = profile.aggression;
     let tightness = profile.tightness;
 

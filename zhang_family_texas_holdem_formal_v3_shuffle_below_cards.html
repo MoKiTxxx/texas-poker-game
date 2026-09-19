@@ -6142,6 +6142,49 @@ function performGTODecision(index) {
                 opponentRanges: getSafeOpponentRangeDebug(actingIndex)
             };
 
+            if (street === "flop") {
+                const flopCfrResult = await requestFlopDepthCfrDecision(
+                    actingIndex,
+                    {
+                        timeLimitMs: autoPlayMode ? 80 : 260,
+                        minIterations: autoPlayMode ? 400 : 1200,
+                        maxIterations: autoPlayMode ? 6000 : 20000,
+                        timeoutMs: autoPlayMode ? 750 : 1100
+                    }
+                );
+
+                if (!isPendingAiAction(actingIndex, actionToken)) return;
+
+                pendingAiDebugInfo[actingIndex] = {
+                    ...(pendingAiDebugInfo[actingIndex] || {}),
+                    flopCfrAttempt: flopCfrResult.reason || "none",
+                    flopCfrNode: flopCfrResult.nodeId || null,
+                    flopCfrIterations: flopCfrResult.iterations || 0,
+                    flopCfrBucketVisits: flopCfrResult.bucketVisits || 0
+                };
+
+                if (flopCfrResult.handled) {
+                    const executed = executeFlopDepthCfrAction(
+                        actingIndex,
+                        flopCfrResult.action
+                    );
+
+                    if (executed) {
+                        recordFlopCfrDecisionDebug(
+                            actingIndex,
+                            flopCfrResult
+                        );
+                        finishAiTurn(actingIndex);
+                        return;
+                    }
+
+                    pendingAiDebugInfo[actingIndex] = {
+                        ...(pendingAiDebugInfo[actingIndex] || {}),
+                        flopCfrAttempt: "flop-cfr-action-execution-failed"
+                    };
+                }
+            }
+
             const equityResult = await estimateRangeAwarePostflopEquity(actingIndex, {
                 timeLimitMs: autoPlayMode ? 55 : 180,
                 timeoutMs: autoPlayMode ? 450 : 800

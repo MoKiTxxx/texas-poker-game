@@ -18,22 +18,28 @@ The solver uses alternating CFR+ with linear average-strategy weighting and repo
 
 ## Important limitation
 
-The CFR layer is real, but the initial showdown equity oracle is intentionally a replaceable proxy based on the existing 169-hand ranking. It is symmetric and deterministic, which makes solver convergence testable, but it is **not** a claim of exact Hold'em preflop equity.
+The default showdown equity oracle now uses a real-card 169×169 canonical preflop matrix.
 
-This separation is deliberate:
+Dataset provenance:
+
+- source: `poker-yoga/poker-math`, `sims/data/preflop-equity.json`;
+- method: stratified Monte Carlo, all-in preflop;
+- 1,000,000 sampled boards per canonical class pair;
+- fixed seed: 1;
+- unit: `win + tie/2`;
+- dataset license: CC0-1.0.
+
+The matrix is stored as an upper triangle and expanded through the identity
 
 ```
-169 information sets
-        |
-      CFR+
-        |
-equity oracle interface
-        |
-  rank proxy today
-  precomputed / Monte Carlo matrix next
+E(A,B) + E(B,A) = 1
 ```
 
-The next equity upgrade can therefore replace the oracle without changing the CFR implementation.
+for the `win + tie/2` equity convention.
+
+This is actual card-runout equity rather than a hand-ranking proxy. It is still a high-precision Monte Carlo dataset rather than exhaustive enumeration of every possible board, so the metadata is preserved and the code does not label it zero-error exact equity.
+
+The old rank proxy remains available only for diagnostics/tests; it is no longer the solver default.
 
 ## Run
 
@@ -46,7 +52,7 @@ node cfr/export-hu-pushfold-blueprint.js 5000 10
 ## Integration plan
 
 1. Validate CFR convergence and stack-depth behavior.
-2. Replace the proxy oracle with a deterministic precomputed equity matrix.
+2. Validate the real-equity blueprint against multiple stack depths and independent sanity checks.
 3. Export 5BB / 8BB / 10BB / 12BB / 15BB blueprints.
 4. Add a feature-flagged lookup to the existing heads-up short-stack preflop AI.
 5. Blend CFR and v37 first; do not replace the current policy outright.

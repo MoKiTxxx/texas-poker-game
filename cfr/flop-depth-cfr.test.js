@@ -6,6 +6,7 @@ const {
   evaluateFiveIds,
   bestOfSevenIds,
   showdownShare,
+  postflopBucket,
   flopBucket,
   buildUniformRange
 } = require("./holdem-postflop");
@@ -110,6 +111,42 @@ function sumObject(obj) {
   );
 })();
 
+(function testTurnBuckets() {
+  const turnBoard = [
+    card(13, 0),
+    card(8, 1),
+    card(3, 2),
+    card(2, 0)
+  ];
+
+  const overPair = postflopBucket(
+    [card(14, 1), card(14, 2)],
+    turnBoard
+  );
+
+  assert.strictEqual(
+    BUCKET_NAMES[overPair],
+    "overPair"
+  );
+
+  const straightBoard = [
+    card(10, 0),
+    card(9, 1),
+    card(8, 2),
+    card(2, 0)
+  ];
+
+  const straight = postflopBucket(
+    [card(12, 1), card(11, 2)],
+    straightBoard
+  );
+
+  assert.strictEqual(
+    BUCKET_NAMES[straight],
+    "straightPlus"
+  );
+})();
+
 (function testTreeShape() {
   assert.deepStrictEqual(
     FLOP_TREE.OOP_ROOT.actions,
@@ -124,6 +161,16 @@ function sumObject(obj) {
   assert.deepStrictEqual(
     FLOP_TREE.IP_VS_OOP_JAM.actions,
     ["fold", "call"]
+  );
+
+  assert.deepStrictEqual(
+    FLOP_TREE.TURN_OOP_ROOT.actions,
+    ["check", "bet50", "jam"]
+  );
+
+  assert.deepStrictEqual(
+    FLOP_TREE.TURN_IP_VS_OOP_B50.actions,
+    ["fold", "call", "jam"]
   );
 })();
 
@@ -149,6 +196,16 @@ function sumObject(obj) {
     meta.hiddenCardPolicy.includes(
       "sample-from-range"
     )
+  );
+
+  assert.strictEqual(
+    meta.leafModel.turnBettingSolved,
+    true
+  );
+
+  assert.strictEqual(
+    meta.leafModel.riverBettingSolved,
+    false
   );
 
   assert.strictEqual(
@@ -234,10 +291,10 @@ function sumObject(obj) {
     seed: 123
   });
 
-  solver.train(30000);
+  solver.train(20000);
   const r1 = solver.normalizedRegret();
 
-  solver.train(90000);
+  solver.train(60000);
   const r2 = solver.normalizedRegret();
 
   console.log(

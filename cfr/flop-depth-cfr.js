@@ -4,6 +4,7 @@ const {
   BUCKET_NAMES,
   buildDeck,
   showdownShare,
+  postflopBucket,
   flopBucket,
   normalizeRange,
   WeightedRangeSampler
@@ -55,6 +56,39 @@ const FLOP_TREE = {
     actions: ["fold", "call"]
   },
   IP_VS_OOP_JAM_AFTER_B75: {
+    player: 1,
+    actions: ["fold", "call"]
+  },
+
+  TURN_OOP_ROOT: {
+    player: 0,
+    actions: ["check", "bet50", "jam"]
+  },
+  TURN_IP_AFTER_CHECK: {
+    player: 1,
+    actions: ["check", "bet50", "jam"]
+  },
+  TURN_IP_VS_OOP_B50: {
+    player: 1,
+    actions: ["fold", "call", "jam"]
+  },
+  TURN_OOP_VS_IP_B50: {
+    player: 0,
+    actions: ["fold", "call", "jam"]
+  },
+  TURN_IP_VS_OOP_JAM: {
+    player: 1,
+    actions: ["fold", "call"]
+  },
+  TURN_OOP_VS_IP_JAM: {
+    player: 0,
+    actions: ["fold", "call"]
+  },
+  TURN_OOP_VS_IP_JAM_AFTER_B50: {
+    player: 0,
+    actions: ["fold", "call"]
+  },
+  TURN_IP_VS_OOP_JAM_AFTER_B50: {
     player: 1,
     actions: ["fold", "call"]
   }
@@ -281,11 +315,15 @@ class FlopDepthLimitedCFR {
       board5
     );
 
+    const turnBoard = this.flop.concat([turn]);
+
     return {
       oopHole,
       ipHole,
       oopBucket: flopBucket(oopHole, this.flop),
       ipBucket: flopBucket(ipHole, this.flop),
+      oopTurnBucket: postflopBucket(oopHole, turnBoard),
+      ipTurnBucket: postflopBucket(ipHole, turnBoard),
       runout,
       oopShare
     };
@@ -416,10 +454,8 @@ class FlopDepthLimitedCFR {
     if (nodeId === "IP_AFTER_CHECK") {
       if (action === "check") {
         return {
-          terminal: this._showdownUtility(
-            state,
-            sample
-          )
+          node: "TURN_OOP_ROOT",
+          state
         };
       }
       if (action === "bet33") {
@@ -453,10 +489,8 @@ class FlopDepthLimitedCFR {
       }
       if (action === "call") {
         return {
-          terminal: this._showdownUtility(
-            this._callToMatch(state, 1),
-            sample
-          )
+          node: "TURN_OOP_ROOT",
+          state: this._callToMatch(state, 1)
         };
       }
       if (action === "jam") {
@@ -481,10 +515,8 @@ class FlopDepthLimitedCFR {
       }
       if (action === "call") {
         return {
-          terminal: this._showdownUtility(
-            this._callToMatch(state, 0),
-            sample
-          )
+          node: "TURN_OOP_ROOT",
+          state: this._callToMatch(state, 0)
         };
       }
       if (action === "jam") {
@@ -538,6 +570,126 @@ class FlopDepthLimitedCFR {
       }
     }
 
+    if (nodeId === "TURN_OOP_ROOT") {
+      if (action === "check") {
+        return { node: "TURN_IP_AFTER_CHECK", state };
+      }
+      if (action === "bet50") {
+        return {
+          node: "TURN_IP_VS_OOP_B50",
+          state: this._bet(state, 0, 0.50)
+        };
+      }
+      if (action === "jam") {
+        return {
+          node: "TURN_IP_VS_OOP_JAM",
+          state: this._jam(state, 0)
+        };
+      }
+    }
+
+    if (nodeId === "TURN_IP_AFTER_CHECK") {
+      if (action === "check") {
+        return {
+          terminal: this._showdownUtility(state, sample)
+        };
+      }
+      if (action === "bet50") {
+        return {
+          node: "TURN_OOP_VS_IP_B50",
+          state: this._bet(state, 1, 0.50)
+        };
+      }
+      if (action === "jam") {
+        return {
+          node: "TURN_OOP_VS_IP_JAM",
+          state: this._jam(state, 1)
+        };
+      }
+    }
+
+    if (nodeId === "TURN_IP_VS_OOP_B50") {
+      if (action === "fold") {
+        return {
+          terminal: this._foldUtility(state, 1)
+        };
+      }
+      if (action === "call") {
+        return {
+          terminal: this._showdownUtility(
+            this._callToMatch(state, 1),
+            sample
+          )
+        };
+      }
+      if (action === "jam") {
+        return {
+          node: "TURN_OOP_VS_IP_JAM_AFTER_B50",
+          state: this._jam(state, 1)
+        };
+      }
+    }
+
+    if (nodeId === "TURN_OOP_VS_IP_B50") {
+      if (action === "fold") {
+        return {
+          terminal: this._foldUtility(state, 0)
+        };
+      }
+      if (action === "call") {
+        return {
+          terminal: this._showdownUtility(
+            this._callToMatch(state, 0),
+            sample
+          )
+        };
+      }
+      if (action === "jam") {
+        return {
+          node: "TURN_IP_VS_OOP_JAM_AFTER_B50",
+          state: this._jam(state, 0)
+        };
+      }
+    }
+
+    if (
+      nodeId === "TURN_IP_VS_OOP_JAM" ||
+      nodeId === "TURN_IP_VS_OOP_JAM_AFTER_B50"
+    ) {
+      if (action === "fold") {
+        return {
+          terminal: this._foldUtility(state, 1)
+        };
+      }
+      if (action === "call") {
+        return {
+          terminal: this._showdownUtility(
+            this._callToMatch(state, 1),
+            sample
+          )
+        };
+      }
+    }
+
+    if (
+      nodeId === "TURN_OOP_VS_IP_JAM" ||
+      nodeId === "TURN_OOP_VS_IP_JAM_AFTER_B50"
+    ) {
+      if (action === "fold") {
+        return {
+          terminal: this._foldUtility(state, 0)
+        };
+      }
+      if (action === "call") {
+        return {
+          terminal: this._showdownUtility(
+            this._callToMatch(state, 0),
+            sample
+          )
+        };
+      }
+    }
+
     throw new Error(
       "unsupported transition: " +
       nodeId +
@@ -557,10 +709,11 @@ class FlopDepthLimitedCFR {
     const node = FLOP_TREE[nodeId];
     const family = this.families.get(nodeId);
 
+    const turnNode = nodeId.startsWith("TURN_");
     const bucket =
       node.player === 0
-        ? sample.oopBucket
-        : sample.ipBucket;
+        ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+        : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
 
     const offset = family.offset(bucket);
     family.visits[bucket]++;
@@ -641,10 +794,11 @@ class FlopDepthLimitedCFR {
     const node = FLOP_TREE[nodeId];
     const family = this.families.get(nodeId);
 
+    const turnNode = nodeId.startsWith("TURN_");
     const bucket =
       node.player === 0
-        ? sample.oopBucket
-        : sample.ipBucket;
+        ? (turnNode ? sample.oopTurnBucket : sample.oopBucket)
+        : (turnNode ? sample.ipTurnBucket : sample.ipBucket);
 
     const offset = family.offset(bucket);
     const ownReach =
@@ -800,7 +954,7 @@ class FlopDepthLimitedCFR {
 
   metadata() {
     return {
-      version: "flop-depth-cfr-v1",
+      version: "flop-turn-depth-cfr-v2",
       flop: this.flop.slice(),
       potBB: this.potBB,
       effectiveStackBB: this.stackBB,
@@ -809,13 +963,16 @@ class FlopDepthLimitedCFR {
       rootNode: this.rootNode,
       initialState: { ...this.initialState },
       sizingModel: {
-        betFractions: [0.33, 0.75],
+        flopBetFractions: [0.33, 0.75],
+        turnBetFractions: [0.50],
         minNonAllInBetBB: 1
       },
       leafModel: {
+        flopNonAllIn: "solve-simplified-turn-betting-round",
+        turnNonAllIn: "sampled-river-checkdown",
         allIn: "sampled-turn-river-showdown",
-        nonAllIn:
-          "sampled-turn-river-checkdown",
+        turnBettingSolved: true,
+        riverBettingSolved: false,
         futureBettingSolved: false
       },
       hiddenCardPolicy:

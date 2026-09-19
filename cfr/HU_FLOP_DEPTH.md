@@ -105,7 +105,7 @@ The standalone HTML now contains a feature-flagged live adapter.
 
 Current guardrails:
 
-- `ENABLE_FLOP_DEPTH_CFR = false` by default;
+- `ENABLE_FLOP_DEPTH_CFR = true` after two positive unseen-seed holdouts;
 - heads-up only;
 - flop only;
 - effective stack capped at 25BB;
@@ -134,22 +134,100 @@ The main thread samples the final action and applies it to the existing poker en
 
 ### Current live compute budget
 
-Autoplay target:
+Validated live target:
 
 ```
-timeLimitMs = 80
-minIterations = 400
-maxIterations = 6000
+minIterations = 600
+maxIterations = 600
 ```
 
-Interactive target:
-
-```
-timeLimitMs = 260
-minIterations = 1200
-maxIterations = 20000
-```
+The worker timeout remains as a safety guard, but strategy quality is aligned to the tested fixed 600-iteration budget.
 
 A separate Node regression executes the exact worker bootstrap and validates all 12 supported public flop nodes, probability normalization, off-tree fallback, and a real solve payload.
 
 The live flag must remain disabled until duplicate A/B holdout shows a reproducible advantage over the existing postflop policy.
+
+
+## Validation history
+
+### Flop-only leaf model
+
+The first live version used flop CFR with turn+river checkdown leaves.
+
+Unseen-seed duplicate holdout:
+
+- 15BB: -0.8125 bb/100
+- 18BB: -1.4050 bb/100
+- 20BB: -2.9650 bb/100
+- pooled 6,000 hands: -1.7275 bb/100
+- pooled 95% duplicate-pair CI: [-7.1538, +3.6988]
+
+Coverage was high, so the problem was not adapter fallback. The checkdown leaf was too crude.
+
+### Flop + simplified turn betting
+
+The resolver was then extended with a turn betting round:
+
+- turn OOP/IP: check / 50% pot / jam
+- facing 50%: fold / call / jam
+- facing jam: fold / call
+- river remains checkdown-only
+
+First unseen-seed holdout at 600 CFR iterations per eligible flop decision:
+
+- 15BB: +12.050 bb/100, CI [+4.500, +19.600]
+- 18BB: +20.028 bb/100, CI [+10.403, +29.652]
+- 20BB: +21.340 bb/100, CI [+11.489, +31.191]
+- pooled 6,000 hands: +17.806 bb/100
+- pooled 95% CI: [+12.570, +23.041]
+
+### Iteration sensitivity
+
+Tuning sweep across 12/15/18/20BB:
+
+- 300 iterations: ~+18.21 bb/100 pooled
+- 600 iterations: ~+18.75 bb/100 pooled
+- 1,200 iterations: ~+15.85 bb/100 pooled
+
+More CFR iterations did not monotonically improve live EV because the remaining river leaf abstraction is still approximate. The validated live budget is therefore fixed at 600 iterations.
+
+### Second unseen-seed holdout
+
+Using 600 iterations:
+
+- 12BB: +6.775 bb/100, CI [+2.496, +11.054]
+- 15BB: +17.010 bb/100, CI [+9.854, +24.166]
+- 18BB: +14.623 bb/100, CI [+4.701, +24.544]
+- 20BB: +20.608 bb/100, CI [+10.128, +31.087]
+
+Pooled over 8,000 hands:
+
+```
++14.7538 bb/100
+95% duplicate-pair CI: [+10.5857, +18.9218]
+```
+
+This reproduced the positive result on a fully independent seed set.
+
+## Current live status
+
+The feature branch now uses:
+
+```
+ENABLE_FLOP_DEPTH_CFR = true
+minIterations = 600
+maxIterations = 600
+```
+
+Live guardrails remain:
+
+- heads-up only;
+- flop entry only;
+- effective stack capped at 25BB;
+- off-tree public histories fall back to Range-MC / v37;
+- insufficient bucket visits fall back;
+- worker timeout/error/invalid output falls back;
+- opponent hidden cards are never supplied to the resolver;
+- opponent range comes from the existing public range model.
+
+The current evidence supports enabling the flop+turn resolver **inside this simulator**. It is still not a complete postflop HUNL solution because river betting remains depth-limited to checkdown.

@@ -94,14 +94,14 @@ function approx(actual, expected, tolerance, message) {
     seed: 12345
   });
 
-  const profile = trainer.train(120000);
+  const profile = trainer.train(1000000);
   const metrics = trainer.metrics(profile);
   const root = metrics.rootActionFrequencies;
 
   console.log("15BB midstack metrics:", metrics);
 
   assert.ok(
-    metrics.exploitability < 0.025,
+    metrics.exploitability < 0.015,
     `exploitability too high: ${metrics.exploitability}`
   );
 
@@ -127,14 +127,14 @@ function approx(actual, expected, tolerance, message) {
     seed: 9920
   });
 
-  const m12 = s12.metrics(s12.train(80000));
-  const m20 = s20.metrics(s20.train(80000));
+  const m12 = s12.metrics(s12.train(500000));
+  const m20 = s20.metrics(s20.train(500000));
 
   console.log("12BB midstack metrics:", m12);
   console.log("20BB midstack metrics:", m20);
 
-  assert.ok(m12.exploitability < 0.04);
-  assert.ok(m20.exploitability < 0.04);
+  assert.ok(m12.exploitability < 0.025);
+  assert.ok(m20.exploitability < 0.025);
 
   assert.ok(
     m12.rootActionFrequencies.shove >

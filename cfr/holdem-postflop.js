@@ -183,6 +183,41 @@ function bestOfSevenIds(ids) {
   return best;
 }
 
+function bestOfAtLeastFiveIds(ids) {
+  if (!Array.isArray(ids) || ids.length < 5 || ids.length > 7) {
+    throw new Error("bestOfAtLeastFiveIds expects 5 to 7 cards");
+  }
+
+  if (ids.length === 5) return evaluateFiveIds(ids);
+  if (ids.length === 7) return bestOfSevenIds(ids);
+
+  let best = null;
+
+  for (let a = 0; a < ids.length - 4; a++) {
+    for (let b = a + 1; b < ids.length - 3; b++) {
+      for (let c = b + 1; c < ids.length - 2; c++) {
+        for (let d = c + 1; d < ids.length - 1; d++) {
+          for (let e = d + 1; e < ids.length; e++) {
+            const value = evaluateFiveIds([
+              ids[a], ids[b], ids[c], ids[d], ids[e]
+            ]);
+
+            if (
+              best === null ||
+              compareHandValues(value, best) > 0
+            ) {
+              best = value;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+
 function showdownShare(holeA, holeB, board5) {
   const a = bestOfSevenIds(holeA.concat(board5));
   const b = bestOfSevenIds(holeB.concat(board5));
@@ -235,19 +270,19 @@ function straightDrawInfo(ids) {
   };
 }
 
-function flopBucket(hole, flop) {
+function postflopBucket(hole, board) {
   if (!Array.isArray(hole) || hole.length !== 2) {
-    throw new Error("flopBucket expects two hole cards");
+    throw new Error("postflopBucket expects two hole cards");
   }
 
-  if (!Array.isArray(flop) || flop.length !== 3) {
-    throw new Error("flopBucket expects three flop cards");
+  if (!Array.isArray(board) || (board.length !== 3 && board.length !== 4)) {
+    throw new Error("postflopBucket expects a flop or turn board");
   }
 
-  const five = hole.concat(flop);
-  const made = evaluateFiveIds(five);
+  const allCards = hole.concat(board);
+  const made = bestOfAtLeastFiveIds(allCards);
   const holeRanks = hole.map(cardRank);
-  const boardRanks = flop.map(cardRank);
+  const boardRanks = board.map(cardRank);
   const maxBoard = Math.max(...boardRanks);
 
   if (made.category >= 4) return 11;
@@ -263,18 +298,16 @@ function flopBucket(hole, flop) {
       return 6;
     }
 
-    if (
-      holeRanks.includes(maxBoard)
-    ) {
+    if (holeRanks.includes(maxBoard)) {
       return 7;
     }
 
     return 6;
   }
 
-  const suits = suitCounts(five);
+  const suits = suitCounts(allCards);
   const flushDraw = suits.some(x => x === 4);
-  const straight = straightDrawInfo(five);
+  const straight = straightDrawInfo(allCards);
 
   if (
     flushDraw &&
@@ -296,6 +329,15 @@ function flopBucket(hole, flop) {
 
   return 0;
 }
+
+function flopBucket(hole, flop) {
+  if (!Array.isArray(flop) || flop.length !== 3) {
+    throw new Error("flopBucket expects three flop cards");
+  }
+
+  return postflopBucket(hole, flop);
+}
+
 
 function buildUniformRange(flop) {
   const blocked = new Set(flop);
@@ -453,7 +495,9 @@ module.exports = {
   compareHandValues,
   evaluateFiveIds,
   bestOfSevenIds,
+  bestOfAtLeastFiveIds,
   showdownShare,
+  postflopBucket,
   flopBucket,
   buildUniformRange,
   normalizeRange,
